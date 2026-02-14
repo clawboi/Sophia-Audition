@@ -5,19 +5,16 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>The Adventures of Sophia</title>
   <meta name="theme-color" content="#0b0b12" />
+
   <style>
     :root{
       --bg:#070710;
       --panel: rgba(10,10,20,.62);
-      --panel2: rgba(255,255,255,.06);
       --text: rgba(255,255,255,.92);
       --muted: rgba(255,255,255,.62);
       --violet: #7a2cff;
       --violet2:#b08cff;
       --line: rgba(255,255,255,.12);
-      --ok: #5CFFB6;
-      --warn:#ffd36b;
-      --bad: #ff5c7a;
       --shadow: 0 12px 40px rgba(0,0,0,.45);
       --r: 18px;
     }
@@ -26,7 +23,6 @@
     html,body{ height:100%; margin:0; background:var(--bg); color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
     body{ overflow:hidden; touch-action:none; }
 
-    /* FULLSCREEN GAME LAYOUT */
     #gameRoot{
       position:fixed; inset:0;
       display:grid;
@@ -34,7 +30,6 @@
       padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
     }
 
-    /* TOP HUD */
     #hudTop{
       position:relative;
       display:flex;
@@ -42,7 +37,7 @@
       align-items:flex-start;
       justify-content:space-between;
       padding: 12px 12px 10px;
-      pointer-events:none; /* allow taps to hit canvas/controls */
+      pointer-events:none;
     }
 
     .hudCard{
@@ -56,13 +51,7 @@
       max-width: min(520px, calc(100vw - 24px));
     }
 
-    .titleRow{
-      display:flex;
-      align-items:baseline;
-      gap:10px;
-      flex-wrap:wrap;
-    }
-
+    .titleRow{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
     .gameTitle{
       margin:0;
       font-weight: 800;
@@ -79,13 +68,7 @@
       color: var(--muted);
     }
 
-    #objective{
-      margin: 8px 0 0;
-      font-size: 13px;
-      line-height: 1.35;
-      color: rgba(255,255,255,.90);
-    }
-
+    #objective{ margin: 8px 0 0; font-size: 13px; line-height: 1.35; color: rgba(255,255,255,.90); }
     #prompt{
       margin: 8px 0 0;
       font-size: 12px;
@@ -95,13 +78,7 @@
       padding-top: 8px;
     }
 
-    .pillRow{
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-      margin-top: 10px;
-    }
-
+    .pillRow{ display:flex; gap:8px; flex-wrap:wrap; margin-top: 10px; }
     .pill{
       display:inline-flex;
       align-items:center;
@@ -119,11 +96,7 @@
     }
     .pill strong{ color: rgba(255,255,255,.94); font-weight:800; }
 
-    /* TIMER */
-    #hudTimer{
-      width: 170px;
-      text-align:right;
-    }
+    #hudTimer{ width: 170px; text-align:right; }
     #timeLabel{
       margin:0;
       font-size: 10px;
@@ -153,7 +126,6 @@
       transform-origin:left center;
     }
 
-    /* CANVAS AREA */
     #stage{
       position:relative;
       display:flex;
@@ -163,11 +135,10 @@
     canvas{
       width:100%;
       height:100%;
-      image-rendering: pixelated; /* retro-ish */
+      image-rendering: pixelated;
       background: #0b0b12;
     }
 
-    /* BOTTOM CONTROLS */
     #hudBottom{
       position:relative;
       display:flex;
@@ -187,7 +158,6 @@
       backdrop-filter: blur(10px);
     }
 
-    /* JOYSTICK */
     #joy{
       width: 140px; height: 140px;
       position:relative;
@@ -224,12 +194,7 @@
       will-change: transform;
     }
 
-    /* ACTION BUTTONS */
-    #actions{
-      display:flex;
-      gap: 10px;
-      align-items:flex-end;
-    }
+    #actions{ display:flex; gap: 10px; align-items:flex-end; }
     .btn{
       min-width: 120px;
       padding: 14px 14px;
@@ -250,13 +215,8 @@
       border-color: rgba(122,44,255,.65);
       background: rgba(122,44,255,.18);
     }
-    .btnPrimary strong{ color: rgba(255,255,255,.98); }
-    .btnSub{
-      min-width: 96px;
-      opacity:.92;
-    }
+    .btnSub{ min-width: 96px; opacity:.92; }
 
-    /* Desktop hint */
     #kbdHint{
       position:absolute;
       left: 12px; top: 12px;
@@ -274,7 +234,6 @@
       margin: 0 4px;
     }
 
-    /* Hide mobile controls on desktop (optional) */
     @media (min-width: 900px){
       #joy{ display:none; }
       .btnSub{ display:none; }
@@ -331,6 +290,19 @@
       50%{ transform: scaleX(1); opacity:1; }
       100%{ transform: scaleX(.35); opacity:.75; }
     }
+
+    /* Debug overlay */
+    #debugBox{
+      position:fixed; left:12px; right:12px; bottom:12px; z-index:9999;
+      max-height:42vh; overflow:auto;
+      background:rgba(0,0,0,.78); border:1px solid rgba(255,255,255,.18);
+      border-radius:16px; padding:12px; color:#fff;
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      display:none;
+    }
+    #debugBox .title{
+      letter-spacing:.12em; text-transform:uppercase; opacity:.9; margin-bottom:6px
+    }
   </style>
 </head>
 
@@ -340,14 +312,13 @@
       <h1 id="loadingTitle">THE ADVENTURES OF SOPHIA</h1>
       <p id="loadingText">
         Loading…<br/>
-        If this gets stuck, it means a file path is wrong (404). Open Console and we’ll fix it fast.
+        If this gets stuck, it means a file path is wrong (404) or a JS crash. Debug box will tell you.
       </p>
       <div id="loadingBarWrap"><div id="loadingBar"></div></div>
     </div>
   </div>
 
   <div id="gameRoot">
-    <!-- TOP HUD -->
     <div id="hudTop">
       <div class="hudCard">
         <div class="titleRow">
@@ -372,13 +343,11 @@
       </div>
     </div>
 
-    <!-- CANVAS STAGE -->
     <div id="stage">
       <div id="kbdHint"><span>W</span><span>A</span><span>S</span><span>D</span> move • <span>E</span> interact</div>
       <canvas id="game" width="960" height="540"></canvas>
     </div>
 
-    <!-- BOTTOM CONTROLS -->
     <div id="hudBottom">
       <div class="controlCard" id="joy" aria-label="Joystick">
         <div id="joyHint">Move</div>
@@ -391,6 +360,8 @@
       </div>
     </div>
   </div>
+
+  <div id="debugBox"><div class="title">Debug</div></div>
 
   <!-- LOAD ORDER: engine -> data -> scenes -> main -->
   <script src="js/audio.js"></script>
@@ -407,19 +378,52 @@
   <script src="js/main.js"></script>
 
   <script>
-    // Let game code hide this when ready:
+    // Let game code hide the loading screen:
     window.__hideLoading = function(){
       const el = document.getElementById('loading');
       if(el) el.style.display = 'none';
     };
 
-    // Basic joystick to provide a direction vector to your input system
+    // Debug overlay (resource errors + JS errors)
+    (function(){
+      const box = document.getElementById('debugBox');
+      function show(msg){
+        box.style.display = 'block';
+        const line = document.createElement('div');
+        line.style.cssText = 'margin:6px 0; opacity:.95;';
+        line.textContent = msg;
+        box.appendChild(line);
+      }
+
+      window.addEventListener('error', function(e){
+        const t = e.target;
+        if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK' || t.tagName === 'IMG')) {
+          show(`RESOURCE FAILED: ${t.tagName} → ${t.src || t.href || '(unknown)'}`);
+        } else {
+          show(`JS ERROR: ${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`);
+        }
+      }, true);
+
+      window.addEventListener('unhandledrejection', function(e){
+        show(`PROMISE ERROR: ${String(e.reason)}`);
+      });
+
+      setTimeout(()=> {
+        const loading = document.getElementById('loading');
+        if (loading && getComputedStyle(loading).display !== 'none'){
+          show('STUCK LOADING: likely missing file path OR crash before main.js finishes.');
+          show('Tip: click the RESOURCE FAILED line and tell me which file.');
+        }
+      }, 2000);
+    })();
+
+    // Joystick → exposes window.__joy {x,y}
     (function(){
       const joy = document.getElementById('joy');
       const knob = document.getElementById('knob');
       if(!joy || !knob) return;
 
-      const MAX = 36; // radius px
+      const MAX = 36;
       let active = false;
       let startX = 0, startY = 0;
 
@@ -429,10 +433,8 @@
         const nx = (dx / mag) * clamped;
         const ny = (dy / mag) * clamped;
         knob.style.transform = `translate(${nx}px, ${ny}px)`;
-        // Expose to game:
         window.__joy = { x: nx / MAX, y: ny / MAX };
       }
-
       function reset(){
         knob.style.transform = "translate(0px, 0px)";
         window.__joy = { x:0, y:0 };
@@ -446,79 +448,24 @@
         startY = r.top + r.height/2;
         setKnob(e.clientX - startX, e.clientY - startY);
       });
-
       joy.addEventListener('pointermove', (e)=>{
         if(!active) return;
         setKnob(e.clientX - startX, e.clientY - startY);
       });
-
-      joy.addEventListener('pointerup', ()=>{
-        active = false;
-        reset();
-      });
-
-      joy.addEventListener('pointercancel', ()=>{
-        active = false;
-        reset();
-      });
+      joy.addEventListener('pointerup', ()=>{ active = false; reset(); });
+      joy.addEventListener('pointercancel', ()=>{ active = false; reset(); });
 
       reset();
     })();
 
-    // Buttons for mobile
+    // Mobile buttons
     document.getElementById('btnInteract')?.addEventListener('click', ()=>{
-      window.__tapInteract = true; // game reads and clears this each frame
+      window.__tapInteract = true;
     });
     document.getElementById('btnRun')?.addEventListener('click', ()=>{
-      window.__tapRun = true; // game reads and clears this each frame
+      window.__tapRun = true;
       setTimeout(()=> window.__tapRun = false, 160);
     });
   </script>
-  // On-screen error overlay (so you don't need console)
-  (function(){
-    const box = document.createElement('div');
-    box.style.cssText = `
-      position:fixed; left:12px; right:12px; bottom:12px; z-index:9999;
-      max-height:42vh; overflow:auto;
-      background:rgba(0,0,0,.78); border:1px solid rgba(255,255,255,.18);
-      border-radius:16px; padding:12px; color:#fff;
-      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      display:none;
-    `;
-    box.innerHTML = `<div style="letter-spacing:.12em;text-transform:uppercase;opacity:.9;margin-bottom:6px">Debug</div>`;
-    document.body.appendChild(box);
-
-    function show(msg){
-      box.style.display = 'block';
-      const line = document.createElement('div');
-      line.style.cssText = 'margin:6px 0; opacity:.95;';
-      line.textContent = msg;
-      box.appendChild(line);
-    }
-
-    // JS errors
-    window.addEventListener('error', function(e){
-      // Resource load error (like 404 script)
-      const t = e.target;
-      if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK' || t.tagName === 'IMG')) {
-        show(`RESOURCE FAILED: ${t.tagName} → ${t.src || t.href || '(unknown)'}`);
-      } else {
-        show(`JS ERROR: ${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`);
-      }
-    }, true);
-
-    // Promise errors
-    window.addEventListener('unhandledrejection', function(e){
-      show(`PROMISE ERROR: ${String(e.reason)}`);
-    });
-
-    // If still loading after 2 seconds, tell user to look here
-    setTimeout(()=> {
-      if (document.getElementById('loading') && getComputedStyle(document.getElementById('loading')).display !== 'none'){
-        show('STUCK LOADING: likely a missing file path or a JS crash before main.js finishes.');
-      }
-    }, 2000);
-  })();
-</script>
 </body>
 </html>
