@@ -1,766 +1,212 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>The Adventures of Sophia — Level 1</title>
-  <meta name="theme-color" content="#0b0b12" />
-  <style>
-    :root{
-      --bg:#07070b;
-      --panel:#0e0f18;
-      --fg:#f5f6ff;
-      --muted: rgba(245,246,255,.72);
-      --violet:#7a2cff;
-      --hair: rgba(255,255,255,.10);
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;
-      background: radial-gradient(900px 600px at 30% 20%, rgba(122,44,255,.18), transparent 55%),
-                  radial-gradient(900px 600px at 80% 70%, rgba(122,44,255,.10), transparent 60%),
-                  var(--bg);
-      color:var(--fg);
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      -webkit-font-smoothing: antialiased;
-      overflow:hidden;
-      touch-action: none;
-    }
+<meta charset="UTF-8">
+<title>Sophia — Level 1</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    .wrap{
-      height:100%;
-      display:flex;
-      flex-direction:column;
-    }
+<style>
+body{
+margin:0;
+overflow:hidden;
+background:#1c1a1a;
+font-family:sans-serif;
+}
 
-    header{
-      padding: 14px 14px 10px;
-      display:flex;
-      align-items:flex-end;
-      justify-content:space-between;
-      gap:12px;
-    }
-    .title{
-      margin:0;
-      letter-spacing:.22em;
-      text-transform:uppercase;
-      font-size: 12px;
-      color: rgba(245,246,255,.86);
-    }
-    .hud{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:center;
-      justify-content:flex-end;
-    }
-    .chip{
-      border:1px solid var(--hair);
-      background: rgba(255,255,255,.03);
-      border-radius: 999px;
-      padding: 8px 10px;
-      font-size: 12px;
-      letter-spacing:.08em;
-      color: rgba(245,246,255,.86);
-      user-select:none;
-    }
-    .chip strong{ color:#fff; font-weight:700; }
-    .chip.violet{
-      border-color: rgba(122,44,255,.45);
-      background: rgba(122,44,255,.10);
-    }
+/* CANVAS */
+canvas{
+display:block;
+margin:auto;
+background:#3e2c1c;
+}
 
-    .stage{
-      flex: 1 1 auto;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      padding: 0 12px 10px;
-    }
+/* JOYSTICK */
+#pad{
+position:fixed;
+bottom:40px;
+left:50%;
+transform:translateX(-50%);
+width:150px;
+height:150px;
+border-radius:50%;
+background:rgba(255,255,255,.05);
+border:2px solid rgba(255,255,255,.15);
+backdrop-filter:blur(8px);
+}
 
-    .frame{
-      width:min(980px, 100%);
-      border:1px solid rgba(255,255,255,.10);
-      background: rgba(0,0,0,.30);
-      border-radius: 18px;
-      overflow:hidden;
-      position:relative;
-      box-shadow: 0 0 0 6px rgba(122,44,255,.06);
-    }
+.btn{
+position:absolute;
+width:40px;
+height:40px;
+border-radius:50%;
+background:#8a2eff;
+opacity:.85;
+}
 
-    canvas{
-      display:block;
-      width:100%;
-      height:auto;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
-      background: #0b0b12;
-    }
+.up{top:10px;left:50%;transform:translateX(-50%);}
+.down{bottom:10px;left:50%;transform:translateX(-50%);}
+.left{left:10px;top:50%;transform:translateY(-50%);}
+.right{right:10px;top:50%;transform:translateY(-50%);}
 
-    /* Touch controls */
-    .controls{
-      padding: 10px 14px 16px;
-      display:flex;
-      justify-content:space-between;
-      gap: 12px;
-      align-items:center;
-    }
-    .pad{
-      display:flex;
-      gap:10px;
-      align-items:center;
-      flex: 1 1 auto;
-    }
-    .btn{
-      width:54px;
-      height:54px;
-      border-radius: 16px;
-      border:1px solid rgba(255,255,255,.12);
-      background: rgba(255,255,255,.03);
-      color: rgba(245,246,255,.92);
-      font-size: 14px;
-      letter-spacing:.12em;
-      text-transform:uppercase;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      user-select:none;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .btn:active{
-      transform: scale(.98);
-      border-color: rgba(122,44,255,.55);
-      background: rgba(122,44,255,.10);
-    }
-    .hint{
-      text-align:right;
-      flex: 0 0 auto;
-      color: rgba(245,246,255,.62);
-      font-size: 12px;
-      letter-spacing:.12em;
-      text-transform:uppercase;
-      user-select:none;
-    }
-    .hint span{ color: rgba(245,246,255,.86); }
-
-    /* Overlay dialog */
-    .overlay{
-      position:absolute;
-      inset:0;
-      display:flex;
-      align-items:flex-end;
-      justify-content:center;
-      padding: 14px;
-      pointer-events:none;
-    }
-    .dialog{
-      width: min(900px, 100%);
-      border: 1px solid rgba(255,255,255,.12);
-      background: rgba(14,15,24,.88);
-      backdrop-filter: blur(8px);
-      border-radius: 18px;
-      padding: 14px 14px;
-      pointer-events:auto;
-      box-shadow: 0 0 0 6px rgba(122,44,255,.06);
-    }
-    .dialogTop{
-      display:flex;
-      justify-content:space-between;
-      gap:12px;
-      align-items:flex-start;
-      margin-bottom: 8px;
-    }
-    .dialogTitle{
-      margin:0;
-      font-size: 12px;
-      letter-spacing:.22em;
-      text-transform:uppercase;
-      color: rgba(245,246,255,.86);
-    }
-    .dialogBody{
-      margin:0;
-      line-height:1.55;
-      color: rgba(245,246,255,.84);
-      font-size: 14px;
-    }
-    .dialogActions{
-      margin-top: 10px;
-      display:flex;
-      gap:10px;
-      justify-content:flex-end;
-      flex-wrap:wrap;
-    }
-    .action{
-      border:1px solid rgba(255,255,255,.12);
-      background: rgba(255,255,255,.03);
-      color: rgba(245,246,255,.92);
-      border-radius: 999px;
-      padding: 10px 12px;
-      font-size: 12px;
-      letter-spacing:.18em;
-      text-transform:uppercase;
-      cursor:pointer;
-    }
-    .action.primary{
-      border-color: rgba(122,44,255,.55);
-      background: rgba(122,44,255,.10);
-    }
-  </style>
+</style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <p class="title">The Adventures of Sophia · Level 1: The Keys</p>
-      <div class="hud">
-        <div class="chip">Time: <strong id="time">--</strong></div>
-        <div class="chip violet">Objective: <strong id="obj">Write 3 lines</strong></div>
-      </div>
-    </header>
-
-    <div class="stage">
-      <div class="frame">
-        <canvas id="c" width="320" height="180" aria-label="Game canvas"></canvas>
-
-        <div class="overlay" id="overlay" style="display:none;">
-          <div class="dialog">
-            <div class="dialogTop">
-              <p class="dialogTitle" id="dlgTitle">Title</p>
-              <div class="chip" style="margin:0;">Tap / Press <strong>OK</strong></div>
-            </div>
-            <p class="dialogBody" id="dlgBody"></p>
-            <div class="dialogActions">
-              <button class="action primary" id="dlgOk">OK</button>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
-    <div class="controls">
-      <div class="pad">
-        <div class="btn" id="left">◀</div>
-        <div class="btn" id="right">▶</div>
-        <div class="btn" id="interact">E</div>
-      </div>
-      <div class="hint">
-        Move <span>◀ ▶</span> · Interact <span>E</span><br/>
-        Keyboard: <span>← →</span> + <span>E</span>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    // ====== Simple Pixel Bedroom: find keys to leave for audition ======
-    const canvas = document.getElementById('c');
-    const ctx = canvas.getContext('2d');
-
-    const uiTime = document.getElementById('time');
-    const uiObj = document.getElementById('obj');
-
-    const overlay = document.getElementById('overlay');
-    const dlgTitle = document.getElementById('dlgTitle');
-    const dlgBody = document.getElementById('dlgBody');
-    const dlgOk = document.getElementById('dlgOk');
-
-    const W = canvas.width, H = canvas.height;
-
-    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-
-    // Game state
-    const state = {
-      mode: 'intro', // intro -> writing -> search -> win
-      timeLeft: 90,  // seconds after panic starts
-      writingLines: 0,
-      hasKeys: false,
-      doorUnlocked: false,
-      // tiny poem lines (auto-generated as she writes)
-      poem: [
-        "i tried to be brave in a quiet room",
-        "my words glow soft like streetlight rain",
-        "but time is a train i can't stop"
-      ],
-      msgCooldown: 0
-    };
-
-    // Sophia (pixel block for now, can become real sprite later)
-    const sophia = {
-      x: 56, y: 128,
-      w: 10, h: 14,
-      vx: 0,
-      speed: 1.05,
-      facing: 1
-    };
-
-    // Room objects (simple rectangles + interaction zones)
-    const room = {
-      floorY: 148,
-      desk: { x: 44, y: 112, w: 44, h: 26, tag:'desk', name:'Desk' },
-      bed:  { x: 110, y: 114, w: 56, h: 32, tag:'bed', name:'Bed' },
-      drawer:{ x: 176, y: 116, w: 26, h: 22, tag:'drawer', name:'Drawer' },
-      rug:  { x: 70, y: 142, w: 96, h: 6, tag:'rug', name:'Rug' },
-      door: { x: 288, y: 92, w: 18, h: 56, tag:'door', name:'Door' },
-      clock:{ x: 236, y: 60, w: 16, h: 16, tag:'clock', name:'Clock' },
-      // keys are "hidden" (we'll randomize their spot among 3)
-      keys: { x: 0, y: 0, w: 8, h: 6, tag:'keys', name:'Keys', found:false }
-    };
-
-    function randomizeKeys(){
-      const spots = [
-        // under bed
-        { x: room.bed.x + 10, y: room.floorY - 6 },
-        // near drawer
-        { x: room.drawer.x + 6, y: room.floorY - 6 },
-        // by rug edge
-        { x: room.rug.x + room.rug.w - 14, y: room.floorY - 6 }
-      ];
-      const pick = spots[Math.floor(Math.random()*spots.length)];
-      room.keys.x = pick.x;
-      room.keys.y = pick.y;
-      room.keys.found = false;
-      state.hasKeys = false;
-    }
-    randomizeKeys();
-
-    // Input
-    const input = { left:false, right:false, interact:false };
-
-    function setKey(e, down){
-      const k = e.key.toLowerCase();
-      if(k === 'arrowleft' || k === 'a') input.left = down;
-      if(k === 'arrowright' || k === 'd') input.right = down;
-      if(k === 'e' || k === 'enter') input.interact = down;
-    }
-    window.addEventListener('keydown', (e)=>setKey(e,true));
-    window.addEventListener('keyup',   (e)=>setKey(e,false));
-
-    // Touch buttons
-    function bindHold(btn, onDown, onUp){
-      const el = document.getElementById(btn);
-      const down = (e)=>{ e.preventDefault(); onDown(); };
-      const up = (e)=>{ e.preventDefault(); onUp(); };
-      el.addEventListener('touchstart', down, {passive:false});
-      el.addEventListener('touchend', up, {passive:false});
-      el.addEventListener('touchcancel', up, {passive:false});
-      el.addEventListener('mousedown', down);
-      el.addEventListener('mouseup', up);
-      el.addEventListener('mouseleave', up);
-    }
-    bindHold('left', ()=>input.left=true, ()=>input.left=false);
-    bindHold('right', ()=>input.right=true, ()=>input.right=false);
-    bindHold('interact', ()=>{ input.interact=true; }, ()=>{ input.interact=false; });
-
-    // Dialog
-    let dialogOpen = false;
-    function showDialog(title, body){
-      dialogOpen = true;
-      dlgTitle.textContent = title;
-      dlgBody.textContent = body;
-      overlay.style.display = 'flex';
-    }
-    function hideDialog(){
-      dialogOpen = false;
-      overlay.style.display = 'none';
-    }
-    dlgOk.addEventListener('click', hideDialog);
-    overlay.addEventListener('click', (e)=>{
-      if(e.target === overlay) hideDialog();
-    });
-
-    // Collision helper
-    function aabb(ax,ay,aw,ah, bx,by,bw,bh){
-      return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
-    }
-
-    // Interaction check: returns nearest interactable tag
-    function getInteractable(){
-      const px = sophia.x, py = sophia.y, pw = sophia.w, ph = sophia.h;
-      const near = (o)=>aabb(px-6,py-2,pw+12,ph+6, o.x,o.y,o.w,o.h);
-
-      if(near(room.desk)) return 'desk';
-      if(near(room.clock)) return 'clock';
-      if(!room.keys.found && near(room.keys)) return 'keys';
-      if(near(room.bed)) return 'bed';
-      if(near(room.drawer)) return 'drawer';
-      if(near(room.door)) return 'door';
-      return null;
-    }
-
-    // Gameplay transitions
-    function startWriting(){
-      state.mode = 'writing';
-      state.writingLines = 0;
-      uiObj.textContent = 'Write 3 lines';
-      showDialog('Sophia', 'Okay. One more stanza… then audition. No distractions.');
-    }
-
-    function panicStart(){
-      state.mode = 'search';
-      state.timeLeft = 90;
-      uiObj.textContent = 'Find your keys';
-      showDialog('CLOCK', 'BAM. You\'re late. Find your keys and get out, NOW.');
-    }
-
-    function win(){
-      state.mode = 'win';
-      uiObj.textContent = 'Escape!';
-      showDialog('SUCCESS', 'Keys found. Door open. Audition next…');
-    }
-
-    function resetLevel(){
-      state.mode = 'intro';
-      state.timeLeft = 90;
-      state.writingLines = 0;
-      state.hasKeys = false;
-      state.doorUnlocked = false;
-      randomizeKeys();
-      sophia.x = 56;
-      hideDialog();
-      showDialog('Level 1', 'Sophia is writing poetry… then realizes she\'s late for an acting audition.\n\nObjective: Write 3 lines at the desk, then find your keys and leave before time runs out.');
-      uiObj.textContent = 'Go to desk';
-    }
-
-    // Initialize
-    resetLevel();
-
-    // Drawing: lo-fi pixel room
-    function drawRoom(){
-      // background
-      ctx.fillStyle = '#0b0b12';
-      ctx.fillRect(0,0,W,H);
-
-      // soft violet lamp glow
-      const g = ctx.createRadialGradient(72,88,8, 72,88,88);
-      g.addColorStop(0, 'rgba(122,44,255,0.18)');
-      g.addColorStop(1, 'rgba(122,44,255,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0,0,W,H);
-
-      // wall
-      ctx.fillStyle = '#0f101b';
-      ctx.fillRect(0,0,W,H);
-
-      // floor
-      ctx.fillStyle = '#141526';
-      ctx.fillRect(0, room.floorY, W, H-room.floorY);
-
-      // floor highlight line
-      ctx.fillStyle = 'rgba(255,255,255,.06)';
-      ctx.fillRect(0, room.floorY, W, 1);
-
-      // rug
-      ctx.fillStyle = 'rgba(255,255,255,.05)';
-      ctx.fillRect(room.rug.x, room.rug.y, room.rug.w, room.rug.h);
-      ctx.fillStyle = 'rgba(122,44,255,.10)';
-      ctx.fillRect(room.rug.x+2, room.rug.y+2, room.rug.w-4, 2);
-
-      // desk
-      ctx.fillStyle = '#1a1b2c';
-      ctx.fillRect(room.desk.x, room.desk.y, room.desk.w, room.desk.h);
-      ctx.fillStyle = 'rgba(255,255,255,.06)';
-      ctx.fillRect(room.desk.x, room.desk.y, room.desk.w, 1);
-      // notebook
-      ctx.fillStyle = 'rgba(255,255,255,.12)';
-      ctx.fillRect(room.desk.x+8, room.desk.y+6, 14, 10);
-      ctx.fillStyle = 'rgba(122,44,255,.18)';
-      ctx.fillRect(room.desk.x+9, room.desk.y+7, 12, 1);
-
-      // bed
-      ctx.fillStyle = '#16172a';
-      ctx.fillRect(room.bed.x, room.bed.y, room.bed.w, room.bed.h);
-      ctx.fillStyle = 'rgba(255,255,255,.06)';
-      ctx.fillRect(room.bed.x, room.bed.y, room.bed.w, 1);
-      // pillow
-      ctx.fillStyle = 'rgba(255,255,255,.10)';
-      ctx.fillRect(room.bed.x+6, room.bed.y+6, 16, 10);
-
-      // drawer
-      ctx.fillStyle = '#1a1b2c';
-      ctx.fillRect(room.drawer.x, room.drawer.y, room.drawer.w, room.drawer.h);
-      ctx.fillStyle = 'rgba(255,255,255,.06)';
-      ctx.fillRect(room.drawer.x, room.drawer.y, room.drawer.w, 1);
-      // knob
-      ctx.fillStyle = 'rgba(255,255,255,.12)';
-      ctx.fillRect(room.drawer.x+12, room.drawer.y+10, 2, 2);
-
-      // door
-      ctx.fillStyle = '#141526';
-      ctx.fillRect(room.door.x, room.door.y, room.door.w, room.door.h);
-      ctx.fillStyle = 'rgba(255,255,255,.06)';
-      ctx.fillRect(room.door.x, room.door.y, room.door.w, 1);
-      // handle
-      ctx.fillStyle = state.hasKeys ? 'rgba(122,44,255,.65)' : 'rgba(255,255,255,.10)';
-      ctx.fillRect(room.door.x+3, room.door.y+26, 3, 2);
-
-      // clock
-      ctx.fillStyle = '#1a1b2c';
-      ctx.fillRect(room.clock.x, room.clock.y, room.clock.w, room.clock.h);
-      ctx.fillStyle = 'rgba(255,255,255,.12)';
-      ctx.fillRect(room.clock.x+2, room.clock.y+2, room.clock.w-4, room.clock.h-4);
-      // clock hands (tiny)
-      ctx.fillStyle = 'rgba(122,44,255,.7)';
-      ctx.fillRect(room.clock.x+8, room.clock.y+4, 1, 6);
-      ctx.fillRect(room.clock.x+8, room.clock.y+8, 4, 1);
-
-      // keys (if not found and mode is search)
-      if(state.mode === 'search' && !room.keys.found){
-        ctx.fillStyle = 'rgba(122,44,255,.85)';
-        ctx.fillRect(room.keys.x, room.keys.y, room.keys.w, room.keys.h);
-        ctx.fillStyle = 'rgba(0,0,0,.40)';
-        ctx.fillRect(room.keys.x+2, room.keys.y+2, 2, 2);
-      }
-
-      // subtle vignette
-      const vg = ctx.createLinearGradient(0,0,W,0);
-      vg.addColorStop(0,'rgba(0,0,0,.25)');
-      vg.addColorStop(0.5,'rgba(0,0,0,0)');
-      vg.addColorStop(1,'rgba(0,0,0,.25)');
-      ctx.fillStyle = vg;
-      ctx.fillRect(0,0,W,H);
-    }
-
-    function drawSophia(){
-      // Sophia body
-      ctx.fillStyle = 'rgba(245,246,255,.92)';
-      ctx.fillRect(sophia.x, sophia.y, sophia.w, sophia.h);
-
-      // hair (violet-ish)
-      ctx.fillStyle = 'rgba(122,44,255,.75)';
-      ctx.fillRect(sophia.x, sophia.y, sophia.w, 4);
-
-      // face pixel
-      ctx.fillStyle = 'rgba(0,0,0,.4)';
-      const fx = sophia.facing > 0 ? sophia.x + 7 : sophia.x + 2;
-      ctx.fillRect(fx, sophia.y+7, 1, 1);
-    }
-
-    function drawPrompt(){
-      const tag = getInteractable();
-      if(!tag || dialogOpen) return;
-
-      let text = '';
-      if(state.mode === 'intro'){
-        if(tag === 'desk') text = 'E: Sit & write';
-        else text = 'Go to desk';
-      } else if(state.mode === 'writing'){
-        if(tag === 'desk') text = 'E: Write line';
-        else text = 'Write at desk';
-      } else if(state.mode === 'search'){
-        if(tag === 'keys') text = 'E: Grab keys';
-        else if(tag === 'door') text = state.hasKeys ? 'E: Leave!' : 'Need keys';
-        else if(tag === 'bed') text = 'E: Check bed';
-        else if(tag === 'drawer') text = 'E: Check drawer';
-        else if(tag === 'clock') text = 'Time is melting';
-        else text = 'Find keys';
-      } else if(state.mode === 'win'){
-        text = 'Nice.';
-      }
-
-      ctx.font = '10px ui-sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(14,15,24,.88)';
-      ctx.strokeStyle = 'rgba(255,255,255,.10)';
-      const x = W/2, y = 16;
-      ctx.beginPath();
-      ctx.roundRect(x-72, y-11, 144, 18, 8);
-      ctx.fill(); ctx.stroke();
-      ctx.fillStyle = 'rgba(245,246,255,.86)';
-      ctx.fillText(text, x, y+2);
-    }
-
-    // polyfill-ish for roundRect on older safari
-    if(!CanvasRenderingContext2D.prototype.roundRect){
-      CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){
-        r = Math.min(r, w/2, h/2);
-        this.beginPath();
-        this.moveTo(x+r,y);
-        this.arcTo(x+w,y,x+w,y+h,r);
-        this.arcTo(x+w,y+h,x,y+h,r);
-        this.arcTo(x,y+h,x,y,r);
-        this.arcTo(x,y,x+w,y,r);
-        this.closePath();
-        return this;
-      };
-    }
-
-    // Main update
-    let last = performance.now();
-    function tick(now){
-      const dt = Math.min(0.033, (now-last)/1000);
-      last = now;
-
-      if(!dialogOpen){
-        update(dt);
-      }
-      render();
-
-      requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
-
-    function update(dt){
-      // timer only after panic
-      if(state.mode === 'search'){
-        state.timeLeft = Math.max(0, state.timeLeft - dt);
-        if(state.timeLeft <= 0){
-          showDialog('TOO LATE', 'Sophia freezes. The audition slips away.\n\nTap OK to restart.');
-          state.mode = 'lose';
-        }
-      }
-
-      // HUD time display
-      if(state.mode === 'search' || state.mode === 'lose'){
-        uiTime.textContent = fmtTime(state.timeLeft);
-      } else {
-        uiTime.textContent = '--';
-      }
-
-      // movement (left/right only)
-      sophia.vx = 0;
-      if(input.left){ sophia.vx = -sophia.speed; sophia.facing = -1; }
-      if(input.right){ sophia.vx = sophia.speed; sophia.facing = 1; }
-      sophia.x += sophia.vx;
-
-      // clamp to room bounds
-      sophia.x = clamp(sophia.x, 6, W - sophia.w - 6);
-      sophia.y = room.floorY - sophia.h;
-
-      // interact press (edge triggered)
-      if(input.interact){
-        input.interact = false; // consume
-        onInteract();
-      }
-    }
-
-    function onInteract(){
-      if(dialogOpen) return;
-
-      // Lose state: restart on any interact
-      if(state.mode === 'lose'){
-        resetLevel();
-        return;
-      }
-
-      const tag = getInteractable();
-
-      if(state.mode === 'intro'){
-        if(tag === 'desk'){
-          startWriting();
-          state.mode = 'writing';
-          uiObj.textContent = 'Write 3 lines';
-        } else {
-          // nudge
-          if(state.msgCooldown <= 0){
-            state.msgCooldown = 0.6;
-          }
-        }
-        return;
-      }
-
-      if(state.mode === 'writing'){
-        if(tag === 'desk'){
-          state.writingLines += 1;
-          uiObj.textContent = `Write ${Math.max(0, 3-state.writingLines)} lines`;
-
-          // tiny poem popup vibe
-          const line = state.poem[state.writingLines-1] || "…";
-          showDialog('Poem', `“${line}”`);
-
-          if(state.writingLines >= 3){
-            uiObj.textContent = 'Check the clock';
-            // force next step: clock panic
-            showDialog('Sophia', 'Okay. Done.\nNow… what time is it?');
-            state.mode = 'writing_done';
-          }
-        } else {
-          showDialog('Sophia', 'Nope. Desk first. Focus.');
-        }
-        return;
-      }
-
-      if(state.mode === 'writing_done'){
-        if(tag === 'clock'){
-          panicStart();
-        } else {
-          showDialog('Sophia', 'Clock. Clock. CLOCK.');
-        }
-        return;
-      }
-
-      if(state.mode === 'search'){
-        if(tag === 'keys' && !room.keys.found){
-          room.keys.found = true;
-          state.hasKeys = true;
-          uiObj.textContent = 'Go to the door';
-          showDialog('FOUND', 'Keys acquired. Go.');
-          return;
-        }
-
-        if(tag === 'door'){
-          if(state.hasKeys){
-            win();
-            return;
-          } else {
-            showDialog('LOCKED', 'No keys. You’re not leaving like this.');
-            return;
-          }
-        }
-
-        if(tag === 'bed'){
-          showDialog('Bed', room.keys.found ? 'Just blankets now.' : 'Sheets. Dust. Nothing… or is it?');
-          return;
-        }
-        if(tag === 'drawer'){
-          showDialog('Drawer', room.keys.found ? 'Empty victory drawer.' : 'Receipts. Lip balm. Chaos.');
-          return;
-        }
-        if(tag === 'desk'){
-          showDialog('Desk', 'Poem done. Panic now.');
-          return;
-        }
-        if(tag === 'clock'){
-          showDialog('Clock', `Time left: ${fmtTime(state.timeLeft)}`);
-          return;
-        }
-
-        showDialog('Sophia', 'Where are they… where are they…');
-        return;
-      }
-
-      if(state.mode === 'win'){
-        resetLevel();
-      }
-    }
-
-    function render(){
-      drawRoom();
-      drawSophia();
-      drawPrompt();
-
-      // tiny objective flash text in corner
-      ctx.font = '10px ui-sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillStyle = 'rgba(245,246,255,.62)';
-      ctx.fillText(uiObj.textContent, 10, 14);
-
-      // if searching, show subtle timer bar
-      if(state.mode === 'search'){
-        const t = clamp(state.timeLeft / 90, 0, 1);
-        ctx.fillStyle = 'rgba(255,255,255,.10)';
-        ctx.fillRect(10, 20, 120, 4);
-        ctx.fillStyle = `rgba(122,44,255,${0.25 + 0.55*t})`;
-        ctx.fillRect(10, 20, 120*t, 4);
-      }
-    }
-
-    function fmtTime(s){
-      s = Math.max(0, s);
-      const m = Math.floor(s / 60);
-      const r = Math.floor(s - m*60);
-      return `${m}:${String(r).padStart(2,'0')}`;
-    }
-  </script>
+
+<canvas id="game" width="900" height="500"></canvas>
+
+<div id="pad">
+<div class="btn up"></div>
+<div class="btn down"></div>
+<div class="btn left"></div>
+<div class="btn right"></div>
+</div>
+
+<script>
+
+const canvas = document.getElementById("game")
+const ctx = canvas.getContext("2d")
+
+/* PLAYER */
+let player = {
+x:420,
+y:260,
+speed:2.4,
+vx:0,
+vy:0
+}
+
+/* CONTROLS */
+const keys = {}
+
+/* KEYBOARD */
+document.addEventListener("keydown",e=>keys[e.key]=true)
+document.addEventListener("keyup",e=>keys[e.key]=false)
+
+/* TOUCH CONTROLS */
+document.querySelector(".up").ontouchstart=()=>player.vy=-player.speed
+document.querySelector(".down").ontouchstart=()=>player.vy=player.speed
+document.querySelector(".left").ontouchstart=()=>player.vx=-player.speed
+document.querySelector(".right").ontouchstart=()=>player.vx=player.speed
+
+document.querySelectorAll(".btn").forEach(b=>{
+b.ontouchend=()=>{player.vx=0;player.vy=0}
+})
+
+/* DRAW ROOM */
+function drawRoom(){
+
+// floor
+ctx.fillStyle="#6e4a2b"
+ctx.fillRect(0,350,900,150)
+
+// wall
+ctx.fillStyle="#a97b50"
+ctx.fillRect(0,0,900,350)
+
+// bookshelf
+for(let i=0;i<6;i++){
+ctx.fillStyle="#4a2d17"
+ctx.fillRect(60+i*140,70,100,220)
+
+ctx.fillStyle="#2a160a"
+ctx.fillRect(60+i*140,150,100,10)
+
+ctx.fillStyle="#2a160a"
+ctx.fillRect(60+i*140,230,100,10)
+}
+
+// books
+for(let i=0;i<50;i++){
+ctx.fillStyle=`hsl(${Math.random()*360},60%,60%)`
+ctx.fillRect(70+Math.random()*760,80+Math.random()*180,10,30)
+}
+
+// desk
+ctx.fillStyle="#5a381e"
+ctx.fillRect(350,300,200,60)
+
+// clock
+ctx.fillStyle="#fff"
+ctx.beginPath()
+ctx.arc(450,80,35,0,Math.PI*2)
+ctx.fill()
+
+ctx.strokeStyle="#000"
+ctx.beginPath()
+ctx.moveTo(450,80)
+ctx.lineTo(450,60)
+ctx.stroke()
+
+}
+
+/* DRAW SOPHIA */
+function drawSophia(){
+
+let bob = Math.sin(Date.now()/150)*2
+
+// dress
+ctx.fillStyle="#ffb6d9"
+ctx.beginPath()
+ctx.ellipse(player.x,player.y+18+bob,22,26,0,0,Math.PI*2)
+ctx.fill()
+
+// head
+ctx.fillStyle="#ffe0c4"
+ctx.beginPath()
+ctx.arc(player.x,player.y-12+bob,16,0,Math.PI*2)
+ctx.fill()
+
+// hair
+ctx.fillStyle="#f5d26b"
+ctx.beginPath()
+ctx.arc(player.x,player.y-16+bob,18,Math.PI,0)
+ctx.fill()
+
+// eyes
+ctx.fillStyle="#4aa3ff"
+ctx.beginPath()
+ctx.arc(player.x-6,player.y-12+bob,3,0,Math.PI*2)
+ctx.arc(player.x+6,player.y-12+bob,3,0,Math.PI*2)
+ctx.fill()
+
+// feet
+ctx.fillStyle="#333"
+ctx.fillRect(player.x-10,player.y+40+bob,8,6)
+ctx.fillRect(player.x+2,player.y+40+bob,8,6)
+
+}
+
+/* MOVEMENT */
+function update(){
+
+player.vx=0
+player.vy=0
+
+if(keys["ArrowUp"]) player.vy=-player.speed
+if(keys["ArrowDown"]) player.vy=player.speed
+if(keys["ArrowLeft"]) player.vx=-player.speed
+if(keys["ArrowRight"]) player.vx=player.speed
+
+player.x+=player.vx
+player.y+=player.vy
+
+// boundaries
+player.x=Math.max(20,Math.min(880,player.x))
+player.y=Math.max(60,Math.min(330,player.y))
+
+}
+
+/* LOOP */
+function game(){
+ctx.clearRect(0,0,900,500)
+drawRoom()
+drawSophia()
+update()
+requestAnimationFrame(game)
+}
+
+game()
+
+</script>
 </body>
 </html>
-
