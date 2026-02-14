@@ -1,3 +1,7 @@
+console.log("MAIN.JS LOADED ✅", new Date().toISOString());
+document.body.insertAdjacentHTML("beforeend",
+  '<div style="position:fixed;top:8px;right:8px;z-index:99999;background:#000;color:#0f0;padding:6px 8px;font:12px monospace;border:1px solid #0f0">main.js loaded</div>'
+);
 console.log("MAIN LOADED");
 
 window.onload = () => {
