@@ -1,7 +1,9 @@
 // src/entities/player.js
-// Same cute dark-Ghibli-ish pixel girl, but with a cleaner walk cycle.
-// Fixes the “strange” walk by shifting feet forward/back (X) more than popping up/down (Y),
-// adds subtle body bob + coat sway, and reduces rounding jitter.
+// NPC City Player v2: bigger/cleaner silhouette, less boxy head, smoother walk.
+// Key changes:
+// - removes strokeRect “square head” look (uses pixel-outline instead)
+// - slightly bigger (px=3) but still thin + a bit shorter overall
+// - improved step: foot forward/back + tiny hip sway + coat tail lag
 
 export class Player {
   constructor(){
@@ -12,7 +14,7 @@ export class Player {
     this._blinkNext = 1.6;
     this._blinkHold = 0;
 
-    this._stepPhase = 0;
+    this._step = 0;
     this._facing = "S";
   }
 
@@ -22,7 +24,7 @@ export class Player {
     this._lastT = performance.now();
     this._blinkNext = 1.2 + Math.random()*2.4;
     this._blinkHold = 0;
-    this._stepPhase = 0;
+    this._step = 0;
     this._facing = this._faceDir(p.faceX || 0, p.faceY || 1);
   }
 
@@ -30,7 +32,6 @@ export class Player {
     const now = performance.now();
     if (!this._lastT) this.reset(p);
 
-    // dt clamp (stable animation)
     let dt = (now - this._lastT) / 1000;
     if (!isFinite(dt) || dt <= 0) dt = 1/60;
     if (dt < 1/144) dt = 1/144;
@@ -47,14 +48,15 @@ export class Player {
     const moving  = speed > 8;
     const running = speed > 165;
 
-    // update facing only when we actually have a directional intent (prevents twitch)
     const fx = p.faceX || 0, fy = p.faceY || 0;
     if (Math.abs(fx) + Math.abs(fy) > 0.25) this._facing = this._faceDir(fx, fy);
     const face = this._facing;
 
-    // step phase
-    const stepRate = moving ? (running ? 11.5 : 8.0) : 1.2;
-    this._stepPhase += dt * stepRate;
+    const acting = (p.jumpT > 0) || (p.dodgeT > 0) || (p.punchT > 0);
+
+    // step
+    const stepRate = moving ? (running ? 10.5 : 7.6) : 1.0;
+    this._step += dt * stepRate;
 
     // blink
     if (this._blinkHold > 0){
@@ -63,40 +65,36 @@ export class Player {
       this._blinkNext -= dt;
       if (this._blinkNext <= 0){
         this._blinkHold = 0.10;
-        this._blinkNext = 1.4 + Math.random()*2.6;
+        this._blinkNext = 1.3 + Math.random()*2.6;
       }
     }
     const blinking = this._blinkHold > 0;
 
-    const acting = (p.jumpT > 0) || (p.dodgeT > 0) || (p.punchT > 0);
+    // --- sizing: bigger but still thin, and a bit shorter ---
+    const px = 3;
 
-    // subtle idle breathe / moving bob
-    const idleBreathe = (!moving && !acting) ? Math.sin(now * 0.0016) : 0;
-    const walkBob     = (moving && !acting) ? Math.sin(this._stepPhase * 2.0) : 0;
+    // sprite grid size (in pixels, before scaling)
+    const SW = 16; // thinner than before
+    const SH = 20; // slightly shorter than before
+    const W = SW * px;
+    const H = SH * px;
 
-    // px scale (same)
-    const px = 2;
-    const W = 18 * px;
-    const H = 22 * px;
-
-    // anchor: centered on collider, feet at bottom
+    // anchor at feet
     const cx = p.x + p.w/2;
     const feetY = p.y + p.h + 2;
 
-    const sx = Math.round(cx - W/2);
-    const sy = Math.round(feetY - H - (p.z || 0));
-
-    // small bob (kept subtle, integer)
-    const bob = (!acting)
-      ? (moving ? Math.round(walkBob * 1) : Math.round(idleBreathe * 1))
+    // gentle bob (subtle)
+    const idle = (!moving && !acting) ? Math.sin(now * 0.0017) : 0;
+    const bob  = (!acting)
+      ? (moving ? Math.sin(this._step * 2.0) * 0.7 : idle * 0.8)
       : 0;
 
-    const y = sy + bob;
+    const sx = Math.round(cx - W/2);
+    const sy = Math.round(feetY - H - (p.z || 0) + bob);
 
-    // palette (same)
-    const outline = "rgba(12,12,20,.55)";
+    // palette (same vibe)
+    const outline = "rgba(12,12,20,.70)";
     const skin    = "#f3ccb6";
-    const blush   = "rgba(255,120,160,.18)";
     const hair    = "#f6e08a";
     const hairS   = "#cbb25b";
     const coat    = "#1b1b24";
@@ -107,131 +105,192 @@ export class Player {
     const eyeLine = "#101018";
     const blue    = "#4aa8ff";
     const blueS   = "#2b6ea8";
-    const white   = "rgba(255,255,255,.88)";
+    const white   = "rgba(255,255,255,.90)";
+    const blush   = "rgba(255,120,160,.16)";
 
-    const fill = (x1,y1,w,h,c)=>{ ctx.fillStyle=c; ctx.fillRect(x1,y1,w,h); };
-    const stroke = (x1,y1,w,h)=>{ ctx.strokeStyle=outline; ctx.lineWidth=2; ctx.strokeRect(x1,y1,w,h); };
+    // --- helpers ---
+    const P = (ix, iy, c) => { // single pixel in sprite grid
+      ctx.fillStyle = c;
+      ctx.fillRect(sx + ix*px, sy + iy*px, px, px);
+    };
 
-    // ground shadow
+    const outlinePixel = (ix, iy) => P(ix, iy, outline);
+
+    // soft shadow
     ctx.save();
     ctx.globalAlpha = 0.18;
     ctx.fillStyle = "#000";
     ctx.beginPath();
-    ctx.ellipse(cx, feetY + 2, 12, 6, 0, 0, Math.PI*2);
+    ctx.ellipse(cx, feetY + 2, 13, 6, 0, 0, Math.PI*2);
     ctx.fill();
     ctx.restore();
 
-    // ===== WALK OFFSETS (fixes “weird walk”) =====
-    // Instead of mainly moving feet up/down, we push them forward/back a touch.
-    // legPhase: -1..1
-    const legPhase = Math.sin(this._stepPhase);
-    const legPhase2 = Math.sin(this._stepPhase + Math.PI); // opposite leg
+    // --- walk motion (nicer step) ---
+    const phaseA = Math.sin(this._step);
+    const phaseB = Math.sin(this._step + Math.PI);
 
-    // forward/back depends on facing; for N/S we push in Y, for E/W in X (but subtle)
-    const dirIsSide = (face === "E" || face === "W");
-    const dirSign   = (face === "E" || face === "S") ? 1 : -1;
+    const side = (face === "E" || face === "W");
+    const dirSign = (face === "E" || face === "S") ? 1 : -1;
 
-    // amplitude in "pixel units" (not scaled)
-    const stride = moving ? (running ? 2 : 1) : 0;  // forward/back amount
-    const lift   = moving ? 1 : 0;                  // tiny lift at mid-step
+    // stride/lift in sprite pixels
+    const stride = moving ? (running ? 2 : 1) : 0;
+    const lift   = moving ? 1 : 0;
 
-    const easeLiftA = Math.max(0, Math.sin(this._stepPhase));      // 0..1..0
-    const easeLiftB = Math.max(0, Math.sin(this._stepPhase+Math.PI));
+    // feet: forward/back > up/down
+    const fA = phaseA * stride * dirSign;
+    const fB = phaseB * stride * dirSign;
 
-    // leg A (left) offsets
-    const legAx = dirIsSide ? Math.round(legPhase * stride * dirSign) : 0;
-    const legAy = dirIsSide ? -Math.round(easeLiftA * lift) : Math.round(legPhase * stride * dirSign);
-    // leg B (right) offsets
-    const legBx = dirIsSide ? Math.round(legPhase2 * stride * dirSign) : 0;
-    const legBy = dirIsSide ? -Math.round(easeLiftB * lift) : Math.round(legPhase2 * stride * dirSign);
+    const upA = Math.max(0, Math.sin(this._step)) * lift;
+    const upB = Math.max(0, Math.sin(this._step + Math.PI)) * lift;
 
-    // arm swing opposite legs, smaller than legs
+    const footAx = side ? Math.round(fA) : 0;
+    const footAy = side ? -Math.round(upA) : Math.round(fA);
+    const footBx = side ? Math.round(fB) : 0;
+    const footBy = side ? -Math.round(upB) : Math.round(fB);
+
+    // hips + coat lag
+    const hipSway = (moving && !acting) ? Math.round(Math.sin(this._step) * 1) : 0;
+    const coatLag = (moving && !acting) ? Math.round(Math.sin(this._step - 0.6) * 1) : 0;
+
+    // arms swing opposite
     const armSwing = moving ? 1 : 0;
-    const armAx = dirIsSide ? -Math.round(legPhase * armSwing * dirSign) : 0;
-    const armAy = dirIsSide ? 0 : -Math.round(legPhase * armSwing * dirSign);
-    const armBx = dirIsSide ? -Math.round(legPhase2 * armSwing * dirSign) : 0;
-    const armBy = dirIsSide ? 0 : -Math.round(legPhase2 * armSwing * dirSign);
+    const armA = -phaseA * armSwing * dirSign;
+    const armB = -phaseB * armSwing * dirSign;
+    const armAx = side ? Math.round(armA) : 0;
+    const armAy = side ? 0 : -Math.round(armA);
+    const armBx = side ? Math.round(armB) : 0;
+    const armBy = side ? 0 : -Math.round(armB);
 
-    // coat sway: tiny left-right wobble when moving
-    const sway = (moving && !acting) ? Math.round(Math.sin(this._stepPhase) * 1) : 0;
+    // punching
+    const punching = p.punchT > 0;
 
-    // ===== HEAD =====
-    // Slight hair bounce when moving (1px max)
-    const hairBob = (moving && !acting) ? Math.round(Math.sin(this._stepPhase * 2) * 1) : 0;
+    // ==========================================================
+    // SPRITE DRAW (pixel-y but more “person” silhouette)
+    //
+    // Grid: 16w x 20h
+    //
+    // Head is rounded via pixels and hair tufts break the box.
+    // ==========================================================
 
-    fill(sx+5*px, y+1*px, 8*px, 7*px, skin);
-    fill(sx+6*px, y+0*px, 6*px, 1*px, skin);
+    // --- outline base (draw outlines first so it feels “shaped”) ---
+    // head outline (rounded-ish)
+    [
+      [6,1],[7,1],[8,1],[9,1],
+      [5,2],[10,2],
+      [4,3],[11,3],
+      [4,4],[11,4],
+      [4,5],[11,5],
+      [5,6],[10,6],
+      [6,7],[7,7],[8,7],[9,7],
 
-    // hair cap + side strands
-    fill(sx+5*px, y+(1+hairBob)*px, 8*px, 3*px, hairS);
-    fill(sx+5*px, y+(1+hairBob)*px, 8*px, 2*px, hair);
-    fill(sx+4*px, y+(3+hairBob)*px, 2*px, 4*px, hairS);
-    fill(sx+12*px,y+(3+hairBob)*px, 2*px, 4*px, hairS);
+      // neck/shoulders outline
+      [6,8],[9,8],
+      [5,9],[10,9],
 
-    // eyes
-    if (blinking){
-      fill(sx+7*px, y+5*px, 2*px, 1*px, eyeLine);
-      fill(sx+10*px,y+5*px, 2*px, 1*px, eyeLine);
-    } else {
-      fill(sx+7*px,  y+4*px, 2*px, 3*px, blueS);
-      fill(sx+10*px, y+4*px, 2*px, 3*px, blueS);
+      // body outline
+      [5,10],[10,10],
+      [4,11],[11,11],
+      [4,12],[11,12],
+      [4,13],[11,13],
+      [5,14],[10,14],
 
-      fill(sx+7*px,  y+4*px, 1*px, 1*px, blue);
-      fill(sx+10*px, y+4*px, 1*px, 1*px, blue);
+      // coat tail outline (adds shape)
+      [6,15],[9,15],
+      [6,16],[9,16]
+    ].forEach(([ix,iy])=>outlinePixel(ix,iy));
 
-      fill(sx+8*px,  y+6*px, 1*px, 1*px, eyeLine);
-      fill(sx+11*px, y+6*px, 1*px, 1*px, eyeLine);
+    // --- hair silhouette to break square ---
+    // top hair + tufts
+    [
+      [5,2],[6,2],[7,2],[8,2],[9,2],[10,2],
+      [5,3],[10,3],
+      [5,4],[10,4],
+      // side strands
+      [4,5],[12,5],
+      [4,6],[12,6]
+    ].forEach(([ix,iy])=>P(ix,iy,hairS));
+    [
+      [6,2],[7,2],[8,2],[9,2],
+      [6,3],[7,3],[8,3],[9,3],
+      [6,4],[7,4],[8,4],[9,4]
+    ].forEach(([ix,iy])=>P(ix,iy,hair));
 
-      fill(sx+8*px,  y+4*px, 1*px, 1*px, white);
-      fill(sx+11*px, y+4*px, 1*px, 1*px, white);
-    }
+    // --- face skin (rounded block) ---
+    [
+      [5,3],[6,3],[7,3],[8,3],[9,3],[10,3],
+      [5,4],[6,4],[7,4],[8,4],[9,4],[10,4],
+      [5,5],[6,5],[7,5],[8,5],[9,5],[10,5],
+      [6,6],[7,6],[8,6],[9,6]
+    ].forEach(([ix,iy])=>P(ix,iy,skin));
 
     // blush
-    ctx.save();
-    ctx.globalAlpha = 0.85;
-    fill(sx+6*px,  y+6*px, 1*px, 1*px, blush);
-    fill(sx+12*px, y+6*px, 1*px, 1*px, blush);
-    ctx.restore();
+    P(6,6,blush); P(9,6,blush);
 
-    stroke(sx+5*px, y+1*px, 8*px, 7*px);
+    // eyes (tiny but expressive)
+    if (blinking){
+      P(6,5,eyeLine); P(9,5,eyeLine);
+    } else {
+      P(6,5,blueS); P(9,5,blueS);
+      P(6,6,blue);  P(9,6,blue);
+      P(7,5,white); P(10,5,white);
+      P(7,6,eyeLine); P(10,6,eyeLine);
+    }
 
-    // ===== scarf =====
-    fill(sx+6*px, y+8*px, 6*px, 2*px, scarf);
-    stroke(sx+6*px, y+8*px, 6*px, 2*px);
+    // --- scarf ---
+    [ [6,8],[7,8],[8,8],[9,8], [7,9],[8,9] ].forEach(([ix,iy])=>P(ix,iy,scarf));
 
-    // ===== body (coat) =====
-    fill(sx+(6+sway)*px, y+10*px, 6*px, 7*px, coat);
-    ctx.save();
-    ctx.globalAlpha = 0.55;
-    fill(sx+(9+sway)*px, y+10*px, 3*px, 7*px, coatS);
-    ctx.restore();
-    stroke(sx+(6+sway)*px, y+10*px, 6*px, 7*px);
+    // --- torso/coat (thin body, with shading + sway) ---
+    const bodyX = hipSway;
+    // main coat
+    for (let iy=10; iy<=14; iy++){
+      for (let ix=6; ix<=9; ix++) P(ix+bodyX, iy, coat);
+      // shade on right
+      P(9+bodyX, iy, coatS);
+    }
+    // coat tail (lag)
+    P(7+bodyX+coatLag, 15, coat);
+    P(8+bodyX+coatLag, 15, coat);
+    P(7+bodyX+coatLag, 16, coatS);
+    P(8+bodyX+coatLag, 16, coatS);
 
-    // ===== arms =====
-    const punching = p.punchT > 0;
+    // --- arms ---
     if (!punching){
       // left arm
-      fill(sx+(4+armAx)*px,  y+(11+armAy)*px, 2*px, 5*px, coat);
-      stroke(sx+(4+armAx)*px,y+(11+armAy)*px, 2*px, 5*px);
+      P(5+armAx+bodyX, 11+armAy, coat);
+      P(5+armAx+bodyX, 12+armAy, coat);
+      P(5+armAx+bodyX, 13+armAy, coatS);
+
       // right arm
-      fill(sx+(12+armBx)*px,  y+(11+armBy)*px, 2*px, 5*px, coat);
-      stroke(sx+(12+armBx)*px,y+(11+armBy)*px, 2*px, 5*px);
+      P(10+armBx+bodyX, 11+armBy, coat);
+      P(10+armBx+bodyX, 12+armBy, coat);
+      P(10+armBx+bodyX, 13+armBy, coatS);
     } else {
-      this._drawPunchArms(ctx, sx, y, px, coat, outline, face);
+      // punch pose: extend one arm by facing
+      let pxDirX = 0, pxDirY = 0;
+      if (face === "E") pxDirX = 2;
+      if (face === "W") pxDirX = -2;
+      if (face === "N") pxDirY = -1;
+      if (face === "S") pxDirY = 1;
+
+      // both arms slightly forward (keeps it simple)
+      P(5+bodyX+pxDirX, 12+pxDirY, coat);
+      P(6+bodyX+pxDirX, 12+pxDirY, coatS);
+      P(10+bodyX+pxDirX,12+pxDirY, coat);
+      P(9+bodyX+pxDirX, 12+pxDirY, coatS);
+
       this._drawPunchSpark(ctx, p, face);
     }
 
-    // ===== feet =====
-    // feet positions stay mostly stable, with stride offsets applied
-    // left foot (A)
-    fill(sx+(7+legAx)*px,  y+(17)*px, 2*px, 2*px, sock);
-    fill(sx+(7+legAx)*px,  y+(19+legAy)*px, 2*px, 3*px, boot);
-    stroke(sx+(7+legAx)*px,y+(19+legAy)*px, 2*px, 3*px);
+    // --- legs/feet (thin, animated) ---
+    // leg A (left)
+    P(7+footAx+bodyX, 17, sock);
+    P(7+footAx+bodyX, 18+footAy, boot);
+    P(7+footAx+bodyX, 19+footAy, boot);
 
-    // right foot (B)
-    fill(sx+(10+legBx)*px, y+(17)*px, 2*px, 2*px, sock);
-    fill(sx+(10+legBx)*px, y+(19+legBy)*px, 2*px, 3*px, boot);
-    stroke(sx+(10+legBx)*px,y+(19+legBy)*px, 2*px, 3*px);
+    // leg B (right)
+    P(8+footBx+bodyX, 17, sock);
+    P(8+footBx+bodyX, 18+footBy, boot);
+    P(8+footBx+bodyX, 19+footBy, boot);
   }
 
   _faceDir(fx, fy){
@@ -239,37 +298,19 @@ export class Player {
     return fy >= 0 ? "S" : "N";
   }
 
-  _drawPunchArms(ctx, sx, y, px, coat, outline, face){
-    const fill = (x1,y1,w,h,c)=>{ ctx.fillStyle=c; ctx.fillRect(x1,y1,w,h); };
-    const stroke = (x1,y1,w,h)=>{ ctx.strokeStyle=outline; ctx.lineWidth=2; ctx.strokeRect(x1,y1,w,h); };
-
-    let lx = sx + 4*px,  ly = y + 11*px;
-    let rx = sx + 12*px, ry = y + 11*px;
-
-    if (face === "E") rx += 2*px;
-    if (face === "W") lx -= 2*px;
-    if (face === "N") { ly -= 2*px; ry -= 2*px; }
-    if (face === "S") { ly += 1*px; ry += 1*px; }
-
-    fill(lx, ly, 2*px, 5*px, coat);
-    fill(rx, ry, 2*px, 5*px, coat);
-    stroke(lx, ly, 2*px, 5*px);
-    stroke(rx, ry, 2*px, 5*px);
-  }
-
   _drawPunchSpark(ctx, p, face){
     const cx = p.x + p.w/2;
     const cy = p.y + p.h/2 - (p.z || 0);
 
     let ox = 0, oy = 0;
-    if (face === "E") ox = 16;
-    if (face === "W") ox = -16;
-    if (face === "N") oy = -16;
-    if (face === "S") oy = 16;
+    if (face === "E") ox = 18;
+    if (face === "W") ox = -18;
+    if (face === "N") oy = -18;
+    if (face === "S") oy = 18;
 
     ctx.save();
     ctx.globalAlpha = 0.85;
-    ctx.strokeStyle = "rgba(255,255,255,.8)";
+    ctx.strokeStyle = "rgba(255,255,255,.85)";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(cx + ox, cy + oy, 8, 0, Math.PI*2);
