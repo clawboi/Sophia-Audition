@@ -1,5 +1,5 @@
 
-// NPC City — World v3 (refined layout pass, minimal edits)
+// NPC City — World v4 (collision + spacing fixes only)
 
 export class World{
   constructor(){
@@ -15,9 +15,7 @@ export class World{
     this.landmarks = [];
     this.trees = [];
 
-    // =====================================================
-    // ROADS (slightly bigger)
-    // =====================================================
+    // ROADS
     const roadW = 200;
 
     this.roads = [
@@ -27,45 +25,27 @@ export class World{
       {x:this.w-roadW,y:0,w:roadW,h:this.h},
     ];
 
-    // curved exit gaps (visual only)
-    this.exits = [
-      {x:this.w/2-140,y:0,w:280,h:roadW},
-      {x:0,y:this.h/2-140,w:roadW,h:280},
-      {x:this.w-roadW,y:this.h/2-140,w:roadW,h:280}
-    ];
-
-    // =====================================================
     // PARK
-    // =====================================================
     this.park = { x:840, y:440, w:720, h:520 };
 
-    // =====================================================
-    // BUILDINGS
-    // =====================================================
-    this.addBuilding(820,180,760,170,"south");
-    this.addBuilding(820,1040,760,170,"north");
-    this.addBuilding(600,440,200,520,"east");
+    // BUILDINGS (shifted inward so none overlap roads)
+    this.addBuilding(820,220,760,170,"south");
+    this.addBuilding(820,1010,760,170,"north");
+    this.addBuilding(640,440,200,520,"east");
 
-    // smaller management
-    this.addBuilding(1120,1220,160,100,"north","management");
+    // management resized + lifted off road
+    this.addBuilding(1120,1080,160,100,"north","management");
 
-    // left side filler homes (fills empty space)
-    this.addBuilding(240,300,220,140,"south");
-    this.addBuilding(240,520,220,140,"south");
-    this.addBuilding(240,740,220,140,"south");
+    // small bottom-left box (payphone/mailbox)
+    this.box = {x:240,y:1080,w:60,h:60};
+    this.solids.push({x:240,y:1080,w:60,h:60});
 
-    // =====================================================
     // AMENITIES
-    // =====================================================
     this.pool   = {x:1700,y:460,w:420,h:220};
     this.tennis = {x:1700,y:740,w:420,h:260};
 
-    // fence around amenities
+    // fence
     this.fence = {x:1680,y:440,w:460,h:580};
-
-    // gate
-    this.gate = {x:1670,y:660,w:20,h:120};
-
     this.solids.push(
       {x:this.fence.x,y:this.fence.y,w:this.fence.w, h:10},
       {x:this.fence.x,y:this.fence.y+this.fence.h-10,w:this.fence.w, h:10},
@@ -73,18 +53,14 @@ export class World{
       {x:this.fence.x+this.fence.w-10,y:this.fence.y,w:10, h:this.fence.h}
     );
 
-    // =====================================================
-    // PARKING (slightly bigger)
-    // =====================================================
+    // PARKING (no overlap)
     this.parking = {x:480,y:1120,w:1440,h:220};
-    this.parkingRoad = {x:480,y:1200,w:1440,h:70};
+    this.parkingRoad = {x:480,y:1210,w:1440,h:70};
 
-    // connector road from loop to parking
+    // connector road
     this.connector = {x:1100,y:this.h-roadW,w:200,h:220};
 
-    // =====================================================
     // SIDEWALKS
-    // =====================================================
     this.sidewalks = [
       {x:this.park.x-40,y:this.park.y-40,w:this.park.w+80,h:30},
       {x:this.park.x-40,y:this.park.y+this.park.h+10,w:this.park.w+80,h:30},
@@ -92,31 +68,25 @@ export class World{
       {x:this.park.x+this.park.w+10,y:this.park.y,w:30,h:this.park.h},
     ];
 
-    // =====================================================
     // TREES
-    // =====================================================
     const spots=[[800,420],[1600,420],[800,1000],[1600,1000]];
     for(const t of spots){
       this.trees.push({x:t[0],y:t[1]});
       this.solids.push({x:t[0]-14,y:t[1]-14,w:28,h:28});
     }
 
-    // =====================================================
     // WORLD BOUNDS
-    // =====================================================
     this.solids.push({x:-200,y:-200,w:this.w+400,h:200});
     this.solids.push({x:-200,y:this.h,w:this.w+400,h:200});
     this.solids.push({x:-200,y:-200,w:200,h:this.h+400});
     this.solids.push({x:this.w,y:-200,w:200,h:this.h+400});
 
-    // =====================================================
     // LANDMARKS
-    // =====================================================
     this.landmarks.push({x:1200,y:420,text:"Central Park"});
     this.landmarks.push({x:1780,y:430,text:"Pool"});
     this.landmarks.push({x:1780,y:720,text:"Tennis"});
     this.landmarks.push({x:520,y:1110,text:"Parking"});
-    this.landmarks.push({x:1200,y:1200,text:"Management"});
+    this.landmarks.push({x:1200,y:1040,text:"Management"});
   }
 
   addBuilding(x,y,w,h,doorSide,type="building"){
@@ -203,6 +173,10 @@ export class World{
     // buildings
     ctx.fillStyle="#c9c0ae";
     for(const b of this.buildings) ctx.fillRect(b.x,b.y,b.w,b.h);
+
+    // small box
+    ctx.fillStyle="#999";
+    ctx.fillRect(this.box.x,this.box.y,this.box.w,this.box.h);
 
     // trees
     ctx.fillStyle="#2f5f2f";
