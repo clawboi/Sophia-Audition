@@ -7,13 +7,12 @@ export class World {
     this.w = 2600;
     this.h = 1600;
 
-    // Named spawn zones per role
+    // Named spawn zones per role (IMPORTANT: keep these OUTSIDE solid blocks)
     this.spawns = {
-  // moved outside nearby building blocks so collision doesn't trap you
-  thug:  { x: 820,  y: 1240, area:"South Side" },     // right of the bodega block
-  actor: { x: 980,  y: 640,  area:"Studio Row" },     // below-left of the studio lot
-  police:{ x: 1760, y: 980,  area:"Civic District" }, // left of Police HQ building
-};
+      thug:  { x: 820,  y: 1240, area:"South Side" },     // right of bodega block
+      actor: { x: 980,  y: 640,  area:"Studio Row" },     // outside studio lot
+      police:{ x: 1760, y: 980,  area:"Civic District" }, // outside police HQ block
+    };
 
     // Static colliders (buildings, fences, etc.)
     this.solids = [
@@ -30,11 +29,12 @@ export class World {
     ];
 
     // “Landmarks” to label on the ground (for orientation)
+    // These also double as interactables for now.
     this.landmarks = [
-      { x: 380,  y: 1120, text:"Bodega" },
-      { x: 1240, y: 420,  text:"Studio Gate" },
-      { x: 2120, y: 900,  text:"Police HQ" },
-      { x: 1560, y: 1260, text:"Bus Stop" },
+      { id:"bodega",     x: 380,  y: 1120, text:"Bodega",      hint:"Shop (soon)" },
+      { id:"studio",     x: 1240, y: 420,  text:"Studio Gate", hint:"Enter (soon)" },
+      { id:"police_hq",  x: 2120, y: 900,  text:"Police HQ",   hint:"Jobs (soon)" },
+      { id:"bus_stop",   x: 1560, y: 1260, text:"Bus Stop",    hint:"Travel (soon)" },
     ];
 
     // Cosmetic roads (just rectangles, non-solid)
@@ -56,8 +56,25 @@ export class World {
     return false;
   }
 
+  // nearest interactable landmark within radius (world units)
+  nearestLandmark(px, py, radius = 56){
+    let best = null;
+    let bestD2 = radius * radius;
+    for (const lm of this.landmarks){
+      const dx = lm.x - px;
+      const dy = lm.y - py;
+      const d2 = dx*dx + dy*dy;
+      if (d2 <= bestD2){
+        bestD2 = d2;
+        best = lm;
+      }
+    }
+    return best;
+  }
+
   draw(ctx, cam){
-    // Background ground
+    // Background ground (placeholder). We’ll “Ghibli-ify” this later with
+    // soft patches + grass noise without using heavy images.
     ctx.fillStyle = "#0b0b12";
     ctx.fillRect(0, 0, cam.vw, cam.vh);
 
@@ -124,4 +141,3 @@ function aabb(a,b){
          a.y < b.y + b.h &&
          a.y + a.h > b.y;
 }
-
