@@ -29,7 +29,7 @@ export class World{
 
     // BUILDINGS
     this.addBuilding(820,220,760,170,"south");
-    this.addBuilding(820,1010,760,170,"north");
+    this.addBuilding(this.w/2-250,1010,500,140,"north");
     this.addBuilding(640,440,200,520,"east");
 
     // MANAGEMENT (smaller + centered properly)
@@ -66,13 +66,6 @@ export class World{
       {x:this.park.x-40,y:this.park.y,w:30,h:this.park.h},
       {x:this.park.x+this.park.w+10,y:this.park.y,w:30,h:this.park.h},
     ];
-
-    // TREES (smaller hitboxes so sidewalks clear)
-    const spots=[[800,420],[1600,420],[800,1000],[1600,1000]];
-    for(const t of spots){
-      this.trees.push({x:t[0],y:t[1]});
-      this.solids.push({x:t[0]-8,y:t[1]-8,w:16,h:16});
-    }
 
     // WORLD BOUNDS (moved OUTSIDE roads so no blocking)
     this.solids.push({x:-200,y:-200,w:this.w+400,h:150});
@@ -168,9 +161,6 @@ export class World{
 
     ctx.fillStyle="#999";
     ctx.fillRect(this.box.x,this.box.y,this.box.w,this.box.h);
-
-    ctx.fillStyle="#2f5f2f";
-    for(const t of this.trees) ctx.fillRect(t.x-10,t.y-10,20,20);
 
     ctx.restore();
   }
