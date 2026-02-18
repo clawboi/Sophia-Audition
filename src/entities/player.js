@@ -1,12 +1,11 @@
 // src/entities/player.js
-// NPC City Player — Reference Sprite Skeleton v9 (pure pixels, no images)
+// NPC City Player — Reference Sprite Skeleton v10 (pure pixels, no images)
 //
-// FINAL: clean Pokemon walk + real swing punch + held items
-// - Walk: classic 4-frame, no thrust (N/S spreads feet X, E/W alternates feet Y)
-// - Punch: big swing (windup -> arc forward -> recoil), BOTH arms animate (lead + follow)
-// - Side punch fixed: no double-flip (left works)
-// - Held item: ONLY when p.held is set (string or object). Optional twoHanded.
-// - Weapon hotkeys handled by Inventory (sets player.held). This file just draws it.
+// Fixes in v10:
+// - Side punch direction now matches facing (E punches right, W punches left) ✅
+// - Punch reach reduced (less extension) ✅
+// - Slight “body kick” + sharper spark streak for impact ✅
+// - Keeps: Pokemon-ish walk, blink, held items, two-handed option ✅
 
 export class Player {
   constructor(){
@@ -87,8 +86,21 @@ export class Player {
     // tiny idle breathe only
     const bob = (!moving && !acting) ? (Math.sin(now * 0.0017) * 0.25) : 0;
 
-    const sx = Math.round(cx - W/2);
-    const sy = Math.round(feetY - H - (p.z || 0) + bob);
+    // PUNCH SWING progress
+    let swingP = 0;
+    if (punching){
+      const t = Math.max(0, Math.min(1, p.punchT)); // 1..0 in your game
+      swingP = 1 - t;
+    }
+
+    // directional kick for “impact”
+    const dir = this._dirVec(face);
+    const hitKick = punching ? this._hitKick(swingP) : 0;
+    const kickX = dir.dx * hitKick;
+    const kickY = dir.dy * hitKick;
+
+    let sx = Math.round(cx - W/2) + kickX;
+    let sy = Math.round(feetY - H - (p.z || 0) + bob) + kickY;
 
     // palette (from your reference)
     const C = {
@@ -173,21 +185,11 @@ export class Player {
     const lArmOff = stepA ? -armSwing : stepB ? armSwing : 0;
     const rArmOff = stepA ?  armSwing : stepB ? -armSwing : 0;
 
-    // PUNCH SWING (bigger + both arms)
-    // swingP goes 0..1 forward through the animation
-    let swingP = 0;
-    if (punching){
-      const t = Math.max(0, Math.min(1, p.punchT)); // 1..0 in your game
-      swingP = 1 - t;
-    }
-
-    const dir = this._dirVec(face);
     const perp = { dx: -dir.dy, dy: dir.dx };
     const swing = this._swingOffsets(swingP, dir, perp); // {lead, follow}
 
     // HELD ITEM: ONLY show if p.held is set
     const held = p.held ?? null;
-    const heldType = (typeof held === "string") ? held : (held?.type || null);
     const twoHanded = !!(typeof held === "object" && held?.twoHanded);
 
     // Route draw by facing
@@ -201,9 +203,8 @@ export class Player {
       this._drawSide(P, C,  { dir:"W", hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, twoHanded });
     }
 
-    // optional spark (still fine)
     if (punching){
-      this._drawPunchSpark(ctx, p, face);
+      this._drawPunchSpark(ctx, p, face, swingP);
     }
   }
 
@@ -281,28 +282,21 @@ export class Player {
       P(Rhand.x, Rhand.y, C.skin);
 
       if (held){
-        // show in right hand by default when idle
-        this._drawHeldItem(P, C, held, "S", Rhand, /*twoHanded*/twoHanded, Lhand);
+        this._drawHeldItem(P, C, held, "S", Rhand, twoHanded, Lhand);
       }
     } else {
-      // BOTH ARMS SWING:
       // lead = right for S
       const leadHand = Rhand;
       const followHand = Lhand;
 
-      // Lead arm: big arc
       this._drawSwingArm(P, C, Rshould, leadHand, swing.lead);
-
-      // Follow arm: smaller arc (feels connected)
       this._drawSwingArm(P, C, Lshould, followHand, swing.follow);
 
-      // HELD: if holding, attach to lead tip. If twoHanded, also draw a connection bar.
       if (held){
         const leadTip = { x: leadHand.x + swing.lead.tipOff.dx, y: leadHand.y + swing.lead.tipOff.dy };
         this._drawHeldItem(P, C, held, "S", leadTip, twoHanded, followHand);
 
         if (twoHanded){
-          // quick connector between hands (makes it feel like both hands are on the weapon)
           const followTip = { x: followHand.x + swing.follow.tipOff.dx, y: followHand.y + swing.follow.tipOff.dy };
           this._plotLine(P, { ...C }, followTip, leadTip, C.wood);
         }
@@ -365,7 +359,7 @@ export class Player {
       [4,4],[5,4],[10,4],[11,4],
     ].forEach(([x,y])=>P(x,y,C.hair));
 
-    // HEAD/NECK (so it’s not hair-only)
+    // HEAD/NECK
     [
       [6,5],[7,5],[8,5],[9,5],
       [7,6],[8,6],
@@ -393,18 +387,16 @@ export class Player {
     const Rshould = { x: 11+bx,y: 11+by + rArmOff };
 
     if (!punching){
-      // sleeves (simpler from back)
       P(4+bx, 11+by + lArmOff, C.shirt2);
       P(4+bx, 12+by + lArmOff, C.shirt1);
       P(11+bx, 11+by + rArmOff, C.shirt2);
       P(11+bx, 12+by + rArmOff, C.shirt1);
 
       if (held){
-        // show in right hand by default
         this._drawHeldItem(P, C, held, "N", Rhand, twoHanded, Lhand);
       }
     } else {
-      // lead = left for N (feels natural)
+      // lead = left for N
       const leadHand = Lhand;
       const followHand = Rhand;
 
@@ -462,7 +454,7 @@ export class Player {
   }
 
   // =========================
-  // SIDE (E/W) FIXED (no double flip)
+  // SIDE (E/W) — fixed so W punches LEFT (no double mirror)
   // =========================
   _drawSide(P, C, s){
     const { dir, hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, twoHanded } = s;
@@ -489,7 +481,7 @@ export class Player {
     ].forEach(([x,y])=>P(flip(x),y,C.skin));
     P(flip(9),5,C.navy);
 
-    // BODY (wider)
+    // BODY
     [
       [6,7],[7,7],[8,7],[9,7],
       [5,8],[6,8],[7,8],[8,8],[9,8],
@@ -516,21 +508,24 @@ export class Player {
         this._drawHeldItem((ix,iy,col)=>P(flip(ix),iy,col), C, held, dir, { x: hand.x, y: hand.y }, twoHanded);
       }
     } else {
-      // IMPORTANT FIX: use swing offsets in WORLD sprite coords, then flip at draw time.
-      const shoulder = { x: should.x, y: should.y + 1 };
-      const mid =      { x: hand.x + swing.lead.midOff.dx, y: hand.y + swing.lead.midOff.dy };
-      const tip =      { x: hand.x + swing.lead.tipOff.dx, y: hand.y + swing.lead.tipOff.dy };
+      // KEY FIX:
+      // For dir="W", the sprite X is flipped at draw time, so we must mirror the SWING OFFSETS
+      // (otherwise W becomes “double mirrored” and punches the wrong way).
+      const swingLead = (dir === "W") ? this._mirrorSwingOne(swing.lead) : swing.lead;
 
-      // sleeve path
+      const shoulder = { x: should.x, y: should.y + 1 };
+      const mid =      { x: hand.x + swingLead.midOff.dx, y: hand.y + swingLead.midOff.dy };
+      const tip =      { x: hand.x + swingLead.tipOff.dx, y: hand.y + swingLead.tipOff.dy };
+
       this._plotLine((ix,iy,col)=>P(flip(ix),iy,col), { ...C }, shoulder, mid, C.shirt2);
       this._plotLine((ix,iy,col)=>P(flip(ix),iy,col), { ...C }, mid, tip, C.shirt2);
-      // little thickness
+
+      // thickness shade
       P(flip(mid.x), mid.y, C.shirt1);
-      // hand tip
+      // fist
       P(flip(tip.x), tip.y, C.skin);
 
       if (held){
-        // held item at tip
         this._drawHeldItem((ix,iy,col)=>P(flip(ix),iy,col), C, held, dir, tip, twoHanded);
       }
     }
@@ -571,7 +566,7 @@ export class Player {
   }
 
   // =========================
-  // SWING MATH (bigger, lead + follow)
+  // SWING MATH (reduced reach)
   // =========================
   _dirVec(face){
     if (face === "E") return { dx: 1, dy: 0 };
@@ -586,18 +581,17 @@ export class Player {
     const windEnd = 0.22;
     const hitEnd  = 0.62;
 
-    // BIGGER punch
-    const reach = 6;  // was 4, now 6
-    const arc   = 3;  // was 2, now 3
+    // Reduced punch reach (was 6/3)
+    const reach = 4;
+    const arc   = 2;
 
-    // lead arm
     let leadTip = { dx: 0, dy: 0 };
     let leadMid = { dx: 0, dy: 0 };
 
     if (p < windEnd){
       const t = p / windEnd;
-      const back = Math.round((1 - t) * 3);
-      const side = Math.round((1 - t) * 2);
+      const back = Math.round((1 - t) * 2);
+      const side = Math.round((1 - t) * 1);
       leadTip = { dx: -dir.dx * back - perp.dx * side, dy: -dir.dy * back - perp.dy * side };
       leadMid = { dx: Math.round(leadTip.dx * 0.6), dy: Math.round(leadTip.dy * 0.6) };
     } else if (p < hitEnd){
@@ -611,7 +605,7 @@ export class Player {
       };
     } else {
       const t = (p - hitEnd) / (1 - hitEnd);
-      const f = Math.round(reach * (1 - 0.40*t));
+      const f = Math.round(reach * (1 - 0.45*t));
       const s = Math.round((1 - t) * 1);
       leadTip = { dx: dir.dx * f + perp.dx * s, dy: dir.dy * f + perp.dy * s };
       leadMid = {
@@ -620,7 +614,6 @@ export class Player {
       };
     }
 
-    // follow arm: smaller version so both arms “go back and forth”
     const followTip = { dx: Math.round(leadTip.dx * 0.55), dy: Math.round(leadTip.dy * 0.55) };
     const followMid = { dx: Math.round(leadMid.dx * 0.55), dy: Math.round(leadMid.dy * 0.55) };
 
@@ -630,6 +623,20 @@ export class Player {
     };
   }
 
+  _mirrorSwingOne(one){
+    // mirror X only (for side-view W)
+    return {
+      tipOff: { dx: -one.tipOff.dx, dy: one.tipOff.dy },
+      midOff: { dx: -one.midOff.dx, dy: one.midOff.dy }
+    };
+  }
+
+  _hitKick(swingP){
+    // tiny kick only during the “hit” window
+    if (swingP > 0.28 && swingP < 0.62) return 1;
+    return 0;
+  }
+
   _drawSwingArm(P, C, shoulder, handBase, swingOne){
     const mid = { x: handBase.x + swingOne.midOff.dx, y: handBase.y + swingOne.midOff.dy };
     const tip = { x: handBase.x + swingOne.tipOff.dx, y: handBase.y + swingOne.tipOff.dy };
@@ -637,10 +644,7 @@ export class Player {
     this._plotLine(P, { ...C }, shoulder, mid, C.shirt2);
     this._plotLine(P, { ...C }, mid, tip, C.shirt2);
 
-    // thickness shade
     P(mid.x, mid.y, C.shirt1);
-
-    // fist
     P(tip.x, tip.y, C.skin);
   }
 
@@ -660,13 +664,12 @@ export class Player {
   }
 
   // =========================
-  // HELD ITEM DRAW (only when p.held exists)
+  // HELD ITEM DRAW
   // =========================
   _drawHeldItem(P, C, held, faceOrDir, hand, twoHanded=false, otherHand=null){
     const type = (typeof held === "string") ? held : (held?.type || "tool");
     const tint = (typeof held === "object" && held?.tint) ? held.tint : null;
 
-    // facing vector
     const face = faceOrDir;
     let dx = 0, dy = 0;
     if (face === "E"){ dx = 1; dy = 0; }
@@ -675,8 +678,6 @@ export class Player {
     else { dx = 0; dy = 1; }
 
     const origin = { x: hand.x + dx, y: hand.y + dy };
-
-    // If two-handed, we draw a slightly longer item and let you “connect” it externally too.
     const len = twoHanded ? 5 : 3;
 
     if (type === "knife"){
@@ -717,23 +718,43 @@ export class Player {
     return fy >= 0 ? "S" : "N";
   }
 
-  _drawPunchSpark(ctx, p, face){
+  _drawPunchSpark(ctx, p, face, swingP){
     const cx = p.x + p.w/2;
     const cy = p.y + p.h/2 - (p.z || 0);
 
-    let ox = 0, oy = 0;
-    if (face === "E") ox = 18;
-    if (face === "W") ox = -18;
-    if (face === "N") oy = -18;
-    if (face === "S") oy = 18;
+    const d = this._dirVec(face);
+
+    // push spark out in front, not a perfect circle
+    const ox = d.dx * 18;
+    const oy = d.dy * 18;
+
+    // only really “flash” during hit window
+    const hot = (swingP > 0.28 && swingP < 0.66) ? 1 : 0.5;
 
     ctx.save();
-    ctx.globalAlpha = 0.75;
-    ctx.strokeStyle = "rgba(255,255,255,.85)";
+    ctx.globalAlpha = 0.75 * hot;
+    ctx.strokeStyle = "rgba(255,255,255,.9)";
     ctx.lineWidth = 2;
+
+    // streak
     ctx.beginPath();
-    ctx.arc(cx + ox, cy + oy, 8, 0, Math.PI*2);
+    ctx.moveTo(cx + ox, cy + oy);
+    ctx.lineTo(cx + ox + d.dx * 14, cy + oy + d.dy * 14);
     ctx.stroke();
+
+    // tiny cross-spark
+    ctx.globalAlpha = 0.55 * hot;
+    ctx.beginPath();
+    ctx.moveTo(cx + ox - d.dy * 6, cy + oy + d.dx * 6);
+    ctx.lineTo(cx + ox + d.dy * 6, cy + oy - d.dx * 6);
+    ctx.stroke();
+
+    // small ring (subtle, not dominant)
+    ctx.globalAlpha = 0.20 * hot;
+    ctx.beginPath();
+    ctx.arc(cx + ox, cy + oy, 7, 0, Math.PI*2);
+    ctx.stroke();
+
     ctx.restore();
   }
 }
