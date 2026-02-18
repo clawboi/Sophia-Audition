@@ -9,11 +9,12 @@ export class World {
       police:{ x: 600, y: 820, area:"Sunleaf Suburbs" },
     };
 
-    // ====== RIVER + PARK + SUBURBS ======
-    this.river  = { x: 0, y: 1188, w: this.w, h: 190 };
-    this.bridge = { x: 1080, y: 1166, w: 240, h: 70 };
+    // ====== RIVER + PARK + SUBURBS (spacing-fixed) ======
+    // River pushed down so no lots ever sit on it.
+    this.river  = { x: 0, y: 1240, w: this.w, h: 210 };
+    this.bridge = { x: 1080, y: 1218, w: 240, h: 78 };
 
-    this.park = buildPark();
+    this.park  = buildPark(); // left side, above main streets
     this.roads = buildSuburbRoads(this.w, this.h, this.bridge, this.park);
 
     // Visible geometry
@@ -22,8 +23,12 @@ export class World {
     this.props = [];
 
     const rng = makeRng(1337);
+
     buildSuburbLots({
       rng,
+      riverY: this.river.y,
+      park: this.park,
+      roads: this.roads,
       addBuilding: (b)=>this.buildings.push(b),
       addYard: (y)=>this.yards.push(y),
       addProp: (p)=>this.props.push(p),
@@ -33,7 +38,7 @@ export class World {
     // ====== SOLIDS (collision) ======
     this.solids = [];
 
-    // Buildings block
+    // Buildings block (small inset so you can brush past walls)
     for (const b of this.buildings){
       this.solids.push({ x: b.x+6, y: b.y+6, w: b.w-12, h: b.h-12 });
     }
@@ -60,16 +65,16 @@ export class World {
       { id:"culdesac",x: 2140, y: 650, text:"Cul-de-sac",   hint:"Quiet" },
     ];
 
-    // Extra dressings: park + river bank
+    // Park dressings (trees/benches/lamps/flowers)
     addParkDressings((p)=>this.props.push(p), rng, this.park);
 
-    // River rocks + reeds
+    // River rocks + reeds (kept ABOVE the river edge so they read clean)
     this.props.push({ type:"rock", x: 520,  y: this.river.y - 10, s: 1.0,  baseY: this.river.y - 10 });
     this.props.push({ type:"rock", x: 1260, y: this.river.y - 8,  s: 1.2,  baseY: this.river.y - 8 });
     this.props.push({ type:"rock", x: 1780, y: this.river.y - 6,  s: 0.95, baseY: this.river.y - 6 });
     for (let i=0;i<22;i++){
       const x = 80 + i*110 + (rng()*30-15);
-      const y = this.river.y - 8 + (rng()*10-5);
+      const y = this.river.y - 10 + (rng()*10-5);
       this.props.push({ type:"reed", x, y, s: 0.9+rng()*0.5, baseY: y+2 });
     }
   }
@@ -104,9 +109,14 @@ export class World {
     const cy = Math.round(cam.y);
     ctx.translate(-cx, -cy);
 
-    // Ground + park + roads
+    // Ground + park (base grass)
     drawGround(ctx, 0, 0, this.w, this.h);
     drawPark(ctx, this.park);
+
+    // YARD LAWNS FIRST (so roads always sit on top, no more green cutting roads)
+    for (const y of this.yards) drawYardLawn(ctx, y);
+
+    // Roads + lane marks + driveways
     drawRoads(ctx, this.roads);
 
     // Water + bridge
@@ -117,8 +127,8 @@ export class World {
     drawRaised(ctx, this.raised.x, this.raised.y, this.raised.w, this.raised.h);
     for (const s of this.stairs) drawStairs(ctx, s.x, s.y, s.w, s.h);
 
-    // Yards (lawns + driveways + walks)
-    for (const y of this.yards) drawYard(ctx, y);
+    // Yard details AFTER roads (walkways + fences read clean)
+    for (const y of this.yards) drawYardDetails(ctx, y);
 
     // Buildings
     for (const b of this.buildings){
@@ -174,16 +184,16 @@ function buildSuburbRoads(W, H, bridge, park){
   asphalt.push ({ x: 95,  y: 735, w: 2050, h: 170, r: 26 });
 
   // Residential street above
-  sidewalk.push({ x: 120, y: 540, w: 1960, h: 140, r: 24 });
-  asphalt.push ({ x: 135, y: 552, w: 1930, h: 116, r: 22 });
+  sidewalk.push({ x: 120, y: 520, w: 1960, h: 140, r: 24 });
+  asphalt.push ({ x: 135, y: 532, w: 1930, h: 116, r: 22 });
 
   // Residential street below
   sidewalk.push({ x: 120, y: 960, w: 1960, h: 140, r: 24 });
   asphalt.push ({ x: 135, y: 972, w: 1930, h: 116, r: 22 });
 
   // Vertical connector (market/studio)
-  sidewalk.push({ x: 980, y: 260, w: 200, h: 840, r: 28 });
-  asphalt.push ({ x: 995, y: 275, w: 170, h: 810, r: 26 });
+  sidewalk.push({ x: 980, y: 260, w: 200, h: 900, r: 28 });
+  asphalt.push ({ x: 995, y: 275, w: 170, h: 870, r: 26 });
 
   // Cul-de-sac
   sidewalk.push({ x: 1850, y: 480, w: 520, h: 360, r: 100 });
@@ -194,34 +204,35 @@ function buildSuburbRoads(W, H, bridge, park){
   asphalt.push ({ x: park.x+58, y: park.y+78, w: park.w-116, h: park.h-156, r: 34 });
 
   // Bridge approach
-  sidewalk.push({ x: bridge.x - 220, y: bridge.y + 6, w: bridge.w + 440, h: 120, r: 28 });
-  asphalt.push ({ x: bridge.x - 205, y: bridge.y + 20, w: bridge.w + 410, h: 92,  r: 24 });
+  sidewalk.push({ x: bridge.x - 220, y: bridge.y + 12, w: bridge.w + 440, h: 128, r: 28 });
+  asphalt.push ({ x: bridge.x - 205, y: bridge.y + 28, w: bridge.w + 410, h: 96,  r: 24 });
 
   // Lane marks
   for (let i=0;i<26;i++) marks.push({ x: 160 + i*70, y: 820, w: 32, h: 4 });
-  for (let i=0;i<13;i++) marks.push({ x: 1065, y: 300 + i*60, w: 4, h: 28 });
+  for (let i=0;i<14;i++) marks.push({ x: 1065, y: 310 + i*58, w: 4, h: 28 });
 
   return { asphalt, sidewalk, marks, driveways };
 }
 
 function buildPark(){
-  return { x: 220, y: 220, w: 760, h: 460, cx: 520, cy: 450 };
+  return { x: 220, y: 200, w: 760, h: 470, cx: 520, cy: 435 };
 }
 
-function buildSuburbLots({ addBuilding, addYard, addProp, addDriveway, rng }){
-  // Lots are aligned to the two residential streets + boulevard.
+function buildSuburbLots({ addBuilding, addYard, addProp, addDriveway, rng, riverY }){
+  // Rows are spaced with margins so they look intentional and never collide with water.
   const rows = [
-    // Above residential street (houses face down toward street)
-    { x0: 140, y0: 360, count: 7, lotW: 250, lotH: 200, gap: 16, faceDown:true, streetY: 540 },
+    // Above upper residential street (houses face DOWN toward street)
+    { x0: 140, y0: 280, count: 7, lotW: 250, lotH: 210, gap: 16, faceDown:true,  streetY: 520 },
 
-    // Between residential and boulevard (houses face down toward boulevard)
-    { x0: 140, y0: 420, count: 7, lotW: 250, lotH: 220, gap: 16, faceDown:true, streetY: 720 },
+    // Between upper street and boulevard (houses face DOWN toward boulevard)
+    // Kept short so it doesn't swallow the boulevard sidewalk.
+    { x0: 140, y0: 580, count: 7, lotW: 250, lotH: 160, gap: 16, faceDown:true,  streetY: 720 },
 
-    // Between boulevard and lower residential (houses face up toward boulevard)
-    { x0: 140, y0: 900, count: 7, lotW: 250, lotH: 220, gap: 16, faceDown:false, streetY: 920 },
+    // Between boulevard and lower street (houses face UP toward boulevard)
+    { x0: 140, y0: 900, count: 7, lotW: 250, lotH: 160, gap: 16, faceDown:false, streetY: 920 },
 
-    // Below lower residential street (houses face up toward street)
-    { x0: 140, y0: 1100, count: 7, lotW: 250, lotH: 200, gap: 16, faceDown:false, streetY: 960 },
+    // Below lower street (houses face UP toward street) — clamped away from river
+    { x0: 140, y0: Math.min(1120, riverY - 210), count: 7, lotW: 250, lotH: 190, gap: 16, faceDown:false, streetY: 960 },
   ];
 
   const placeRow = (row) => {
@@ -229,23 +240,19 @@ function buildSuburbLots({ addBuilding, addYard, addProp, addDriveway, rng }){
       const lotX = row.x0 + i*(row.lotW + row.gap);
       const lotY = row.y0;
 
-      const yard = {
-        x: lotX+10,
-        y: lotY+10,
-        w: row.lotW-20,
-        h: row.lotH-20,
-      };
+      // Yard (front lawn)
+      const yard = { x: lotX+10, y: lotY+10, w: row.lotW-20, h: row.lotH-20 };
       addYard(yard);
 
-      // House
+      // House geometry
       const houseW = 168 + Math.floor(rng()*30);
       const houseH = 108 + Math.floor(rng()*22);
       const hx = lotX + (row.lotW - houseW)/2;
 
-      // Place house toward "back" of lot (away from street)
+      // Place house toward the back of the lot relative to the street
       const hy = row.faceDown
-        ? (lotY + row.lotH - houseH - 30)
-        : (lotY + 30);
+        ? (lotY + row.lotH - houseH - 26)
+        : (lotY + 26);
 
       addBuilding({
         kind:"house",
@@ -257,43 +264,48 @@ function buildSuburbLots({ addBuilding, addYard, addProp, addDriveway, rng }){
         variant: (i + Math.floor(rng()*3)) % 3,
       });
 
-      // Driveway aligns from street edge into yard
+      // Driveway: always intersects the street band slightly so it feels connected.
       const dW = 58;
-      const dH = 88 + Math.floor(rng()*28);
+      const dH = 82 + Math.floor(rng()*26);
       const dX = lotX + 22 + Math.floor(rng()*38);
-      const dY = row.faceDown ? (row.streetY + 4) : (row.streetY - dH - 8);
 
-      // store on yard (so your yard draw works)
+      // For faceDown rows, driveway drops from lot toward streetY.
+      // For faceUp rows, driveway rises from streetY toward lot.
+      const dY = row.faceDown ? (row.streetY + 8) : (row.streetY - dH - 10);
+
+      // Store on yard (detail pass draws it)
       yard.drive = { x:dX, y:dY, w:dW, h:dH };
 
-      // also put into roads.driveways so it “feels connected”
+      // Also put into roads.driveways so it connects visually to road paint
       addDriveway({ x:dX, y:dY, w:dW, h:dH, r: 10 });
 
-      // Walkway (porch to sidewalk-ish)
-      const walkH = 54;
+      // Walkway (porch to driveway/sidewalk area)
+      const walkH = 52;
       const walkY = row.faceDown ? (hy - walkH) : (hy + houseH);
       yard.walk = { x: hx + houseW*0.5 - 8, y: walkY, w: 16, h: walkH };
 
       // Mailbox near driveway street edge
-      const mbY = row.faceDown ? (row.streetY + 10) : (row.streetY - 10);
+      const mbY = row.faceDown ? (row.streetY + 18) : (row.streetY - 18);
       addProp({ type:"mailbox", x: dX + dW + 10, y: mbY, s: 1, baseY: mbY+2 });
 
-      // Street lamp every other lot
+      // Street lamp every other lot, centered on street band (clean spacing)
       if ((i % 2) === 0){
-        const lampY = row.streetY + 60;
+        const lampY = row.faceDown ? (row.streetY + 86) : (row.streetY + 56);
         addProp({ type:"lamp", x: lotX + row.lotW/2, y: lampY, s: 1, baseY: lampY+2 });
       }
 
-      // Yard bushes (kept tidy)
+      // Yard bushes (tidy, set back from sidewalk)
       const bushes = 2 + Math.floor(rng()*3);
       for (let k=0;k<bushes;k++){
         const bx = yard.x + 26 + k*(yard.w/(bushes+1));
-        const by = yard.y + 20 + rng()*10;
+        const by = yard.y + 24 + rng()*10;
         addProp({ type:"bush", x: bx, y: by, s: 0.72 + rng()*0.30, baseY: by+2 });
       }
+
+      // Flowers + trees (kept in back corners so yards look planned)
       if (rng() < 0.50) addFlowerPatch((p)=>addProp(p), rng, yard.x + yard.w*0.5, yard.y + yard.h*0.55);
-      if (rng() < 0.85) addProp({ type:"tree", x: yard.x + 30 + rng()*40, y: yard.y + yard.h - 16, s: 0.95 + rng()*0.25, baseY: yard.y + yard.h });
-      if (rng() < 0.45) addProp({ type:"tree", x: yard.x + yard.w - (30 + rng()*40), y: yard.y + yard.h - 16, s: 0.90 + rng()*0.25, baseY: yard.y + yard.h });
+      if (rng() < 0.80) addProp({ type:"tree", x: yard.x + 30 + rng()*40, y: yard.y + yard.h - 16, s: 0.95 + rng()*0.25, baseY: yard.y + yard.h });
+      if (rng() < 0.40) addProp({ type:"tree", x: yard.x + yard.w - (30 + rng()*40), y: yard.y + yard.h - 16, s: 0.90 + rng()*0.25, baseY: yard.y + yard.h });
     }
   };
 
@@ -306,23 +318,23 @@ function buildSuburbLots({ addBuilding, addYard, addProp, addDriveway, rng }){
   addBuilding({ kind:"studio", x: 1540, y: 340, w: 320, h: 190 });
 
   // Park-edge cottages (cozier)
-  addBuilding({ kind:"house", x: 180, y: 310, w: 200, h: 120, accent: 1, variant: 2 });
-  addBuilding({ kind:"house", x: 420, y: 300, w: 210, h: 124, accent: 2, variant: 1 });
+  addBuilding({ kind:"house", x: 180, y: 305, w: 200, h: 120, accent: 1, variant: 2 });
+  addBuilding({ kind:"house", x: 420, y: 298, w: 210, h: 124, accent: 2, variant: 1 });
 
-  // Cul-de-sac houses (curve feel)
+  // Cul-de-sac houses (curve feel) kept inside the culdesac bounds
   const cx = 2100, cy = 650;
   for (let i=0;i<5;i++){
-    const t = (-0.9 + i*0.45);
-    const hx = cx + Math.cos(t)*220 - 90;
-    const hy = cy + Math.sin(t)*140 - 60;
+    const t = (-0.95 + i*0.47);
+    const hx = cx + Math.cos(t)*205 - 90;
+    const hy = cy + Math.sin(t)*125 - 58;
     addBuilding({ kind:"house", x: Math.round(hx), y: Math.round(hy), w: 180, h: 118, accent: i%3, variant: (i+1)%3 });
   }
 }
 
 /* ===================== Visual Blocks ===================== */
 
-function drawYard(ctx, y){
-  // lawn
+function drawYardLawn(ctx, y){
+  // lawn fill only (details drawn later)
   ctx.globalAlpha = 0.95;
   ctx.fillStyle = "#55733a";
   roundRect(ctx, y.x, y.y, y.w, y.h, 18, true);
@@ -336,10 +348,12 @@ function drawYard(ctx, y){
     if (i % 4 === 0) ctx.fillRect(px, py, 1, 1);
   }
   ctx.globalAlpha = 1;
+}
 
+function drawYardDetails(ctx, y){
   // driveway (if present)
   if (y.drive){
-    ctx.globalAlpha = 0.9;
+    ctx.globalAlpha = 0.92;
     ctx.fillStyle = "#a8a294";
     roundRect(ctx, y.drive.x, y.drive.y, y.drive.w, y.drive.h, 10, true);
     ctx.globalAlpha = 1;
@@ -347,7 +361,7 @@ function drawYard(ctx, y){
 
   // walkway
   if (y.walk){
-    ctx.globalAlpha = 0.75;
+    ctx.globalAlpha = 0.78;
     ctx.fillStyle = "#d3c8b5";
     roundRect(ctx, y.walk.x, y.walk.y, y.walk.w, y.walk.h, 8, true);
     ctx.globalAlpha = 1;
@@ -378,13 +392,13 @@ function drawPark(ctx, p){
   roundRect(ctx, p.x+110, p.y+120, p.w-220, p.h-240, 26, true);
   ctx.globalAlpha = 1;
 
-  // pond (tiny water feature inside park)
+  // pond inside park
   const pond = { x: p.cx-110, y: p.cy-10, w: 220, h: 110 };
   ctx.globalAlpha = 0.95;
   drawWaterStatic(ctx, pond.x, pond.y, pond.w, pond.h);
   ctx.globalAlpha = 1;
 
-  // playground pad (simple)
+  // playground pad
   ctx.globalAlpha = 0.88;
   ctx.fillStyle = "#b28f5d";
   roundRect(ctx, p.cx+140, p.cy-60, 160, 110, 18, true);
@@ -467,7 +481,7 @@ function drawGround(ctx, x, y, w, h){
 }
 
 function drawRoads(ctx, roads){
-  // sidewalks first (feel like edges)
+  // sidewalks first
   for (const s of roads.sidewalk){
     ctx.fillStyle = "#bfb9a8";
     roundRect(ctx, s.x, s.y, s.w, s.h, s.r || 14, true);
@@ -512,7 +526,7 @@ function drawRoads(ctx, roads){
   for (const m of roads.marks) ctx.fillRect(m.x, m.y, m.w, m.h);
   ctx.globalAlpha = 1;
 
-  // driveways (so they visually connect to roads)
+  // driveways (so they connect to roads visually)
   ctx.globalAlpha = 0.95;
   ctx.fillStyle = "#a8a294";
   for (const d of roads.driveways){
