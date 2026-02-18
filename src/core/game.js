@@ -33,6 +33,13 @@ export class Game {
 
       money: 40,
       area: "",
+
+      // --- animation state (purely visual) ---
+      animPhase: 0,      // walk cycle phase
+      moveAmt: 0,        // 0..1 (how much you're moving)
+      runAmt: 0,         // 0..1 (how much you're running)
+      blinkTimer: 2.2,   // seconds until next blink
+      blinkHold: 0,      // blink duration
     };
 
     this.camera = {
@@ -81,6 +88,13 @@ export class Game {
     this.player.iFrames = 0;
     this.player.stamina = this.player.staminaMax;
 
+    // reset visuals
+    this.player.animPhase = 0;
+    this.player.moveAmt = 0;
+    this.player.runAmt = 0;
+    this.player.blinkTimer = 2.0 + Math.random()*2.5;
+    this.player.blinkHold = 0;
+
     this.fx.length = 0;
 
     this.state = "play";
@@ -104,6 +118,13 @@ export class Game {
     this.player.iFrames ??= 0;
     this.player.staminaMax ??= 100;
     this.player.stamina = clamp(this.player.stamina ?? this.player.staminaMax, 0, this.player.staminaMax);
+
+    // safety: visuals
+    this.player.animPhase ??= 0;
+    this.player.moveAmt ??= 0;
+    this.player.runAmt ??= 0;
+    this.player.blinkTimer ??= 2.0 + Math.random()*2.5;
+    this.player.blinkHold ??= 0;
 
     this.state = "play";
     this.ui.hideMenu();
@@ -244,6 +265,17 @@ export class Game {
       const slow = (this.player.punchT > 0) ? 0.55 : (this.player.jumpT > 0 ? 0.85 : 1.0);
       dx = ax * speed * slow * dt;
       dy = ay * speed * slow * dt;
+
+      // --- animation intensity ---
+      const moving = amag > 0.02;
+      const targetMove = moving ? 1 : 0;
+      const targetRun  = (moving && run) ? 1 : 0;
+      this.player.moveAmt = lerp(this.player.moveAmt, targetMove, 0.18);
+      this.player.runAmt  = lerp(this.player.runAmt, targetRun, 0.18);
+
+      // walk cycle speed
+      const cycleSpd = moving ? (run ? 14.0 : 9.5) : 0;
+      this.player.animPhase = (this.player.animPhase + cycleSpd * dt) % (Math.PI * 2);
     }
 
     // tick action timers
@@ -258,6 +290,17 @@ export class Game {
       this.player.z = 0;
     }
 
+    // Blink timing (alive!)
+    if (this.player.blinkHold > 0){
+      this.player.blinkHold = Math.max(0, this.player.blinkHold - dt);
+    } else {
+      this.player.blinkTimer -= dt;
+      if (this.player.blinkTimer <= 0){
+        this.player.blinkHold = 0.11; // quick blink
+        this.player.blinkTimer = 1.8 + Math.random()*3.4;
+      }
+    }
+
     // Collide per-axis for smooth sliding
     this.moveWithCollision(dx, 0);
     this.moveWithCollision(0, dy);
@@ -267,19 +310,19 @@ export class Game {
     this.player.y = clamp(this.player.y, 0, this.world.h - this.player.h);
 
     // Camera follow (smooth, then pixel-snap to stop shimmer)
-const targetX = this.player.x + this.player.w * 0.5 - this.camera.vw * 0.5;
-const targetY = this.player.y + this.player.h * 0.5 - this.camera.vh * 0.5;
+    const targetX = this.player.x + this.player.w * 0.5 - this.camera.vw * 0.5;
+    const targetY = this.player.y + this.player.h * 0.5 - this.camera.vh * 0.5;
 
-const clampedX = clamp(targetX, 0, this.world.w - this.camera.vw);
-const clampedY = clamp(targetY, 0, this.world.h - this.camera.vh);
+    const clampedX = clamp(targetX, 0, this.world.w - this.camera.vw);
+    const clampedY = clamp(targetY, 0, this.world.h - this.camera.vh);
 
-// Smooth follow
-this.camera.x = lerp(this.camera.x, clampedX, 0.12);
-this.camera.y = lerp(this.camera.y, clampedY, 0.12);
+    // Smooth follow
+    this.camera.x = lerp(this.camera.x, clampedX, 0.12);
+    this.camera.y = lerp(this.camera.y, clampedY, 0.12);
 
-// Pixel-snap (kills the “static/shaky” look)
-this.camera.x = Math.round(this.camera.x);
-this.camera.y = Math.round(this.camera.y);
+    // Pixel-snap (kills the “static/shaky” look)
+    this.camera.x = Math.round(this.camera.x);
+    this.camera.y = Math.round(this.camera.y);
 
     // Determine area name (simple rule: based on regions)
     this.player.area = this.getAreaName(this.player.x, this.player.y, this.player.role);
@@ -410,7 +453,11 @@ this.camera.y = Math.round(this.camera.y);
     );
     ctx.fill();
 
-    drawPlayerGhibliZelda(ctx, this.player);
+    // lift for punch ring etc.
+    const liftY = -this.player.z;
+
+    // Draw player (cute dark ghibli x zelda girl)
+    drawPlayerNPCGirl(ctx, this.player);
 
     // Punch ring (visual)
     if (this.player.punchT > 0){
@@ -427,163 +474,185 @@ this.camera.y = Math.round(this.camera.y);
       ctx.globalAlpha = 1;
     }
 
-    // ... draw player ...
+    // above-layer props (tree canopies, etc.)
+    this.world.drawAbove?.(ctx, this.camera);
 
-// NEW: draw above-layer props (tree canopies, etc.)
-this.world.drawAbove?.(ctx, this.camera);
-
-ctx.restore();
-
+    ctx.restore();
   }
 }
 
-// ===== PLAYER SPRITE: Studio Ghibli x Zelda (no images) =====
-// Design notes (why it feels right):
-// - Big readable head + eyes (Ghibli warmth) but compact silhouette (Zelda clarity)
-// - Tunic + belt + satchel strap = "adventure" without needing gear systems yet
-// - Soft outline (not harsh black) so it blends with your dreamy UI
-// - Tiny idle-breath bob so the character feels alive even when standing
+// ===== PLAYER SPRITE: NPC Girl (Studio Ghibli x Zelda, cute but dark) =====
+// No images. All pixel blocks. Animated: arms + legs + blink + breathing.
+// Bigger on screen by design (sprite is larger than collider).
 
-function drawPlayerGhibliZelda(ctx, p){
-  // Base sprite size in "pixel units"
-  const px = 2; // pixel scale (2 = crisp but detailed on 960x540)
-  const W = 16 * px;
-  const H = 22 * px;
+function drawPlayerNPCGirl(ctx, p){
+  // Bigger scale than before
+  const px = 3;              // 3px per sprite pixel (bigger, cuter)
+  const SW = 18 * px;        // sprite width
+  const SH = 26 * px;        // sprite height
 
-  // Anchor: center on collider, feet at bottom
   const cx = p.x + p.w/2;
-  const feetY = p.y + p.h + 2;
-  const sx = Math.round(cx - W/2);
-  const sy = Math.round(feetY - H - (p.z || 0));
+  const feetY = p.y + p.h + 3;
+  const sx = Math.round(cx - SW/2);
+  const sy = Math.round(feetY - SH - (p.z || 0));
 
-  // Gentle idle bob (breathing)
-  const t = performance.now() * 0.002;
-  const bob = (p.jumpT > 0 || p.dodgeT > 0 || p.punchT > 0) ? 0 : Math.round(Math.sin(t) * 1);
-  const y = sy + bob;
+  // Alive motion
+  const t = performance.now() * 0.0022;
+  const breathe = (p.moveAmt > 0.12 || p.jumpT > 0 || p.dodgeT > 0) ? 0 : Math.round(Math.sin(t) * 1);
+  const y = sy + breathe;
 
-  // Palette (warm, painterly, "Ghibli-ish" but still game readable)
-  const outline = "rgba(10,10,18,.55)";
-  const skin    = "#f1c7a6";
-  const blush   = "rgba(255,120,160,.28)";
-  const hair    = "#2a1b14";
-  const tunic   = "#2faa53";     // classic heroic green
-  const tunic2  = "#1f7f42";     // shadow green
-  const belt    = "#6b4b2a";
-  const metal   = "#c9c0ae";
-  const boots   = "#2a1f18";
-  const strap   = "#4a3424";
-  const bag     = "#7a5a3a";
-  const eye     = "#1a1a1a";
-  const eye2    = "rgba(255,255,255,.85)";
+  // Walk/run cycle
+  const phase = p.animPhase || 0;
+  const move = clamp(p.moveAmt || 0, 0, 1);
+  const run = clamp(p.runAmt || 0, 0, 1);
+  const swing = Math.sin(phase);
 
-  // Shadow on ground (already in your code too, but this helps sprite feel anchored)
-  ctx.save();
-  ctx.globalAlpha = 0.22;
-  ctx.fillStyle = "#000";
-  ctx.beginPath();
-  ctx.ellipse(cx, feetY + 2, 12, 6, 0, 0, Math.PI*2);
-  ctx.fill();
-  ctx.restore();
+  // Direction hint (turn head slightly)
+  const fx = p.faceX || 0;
+  const headTurn = Math.round(clamp(fx, -1, 1) * 1); // -1..1 px shift
 
-  // Helper: chunky pixel rect with optional outline
-  function box(x, y, w, h, fill){
-    ctx.fillStyle = fill;
+  // Palettes: "cute dark"
+  const outline = "rgba(8,8,16,.55)";
+  const skin    = "#f2c8b0";
+  const blush   = "rgba(255,120,160,.22)";
+  const hair    = "#f5d56b"; // blonde
+  const hair2   = "#d1b053"; // shade blonde
+  const eye     = "#1a1a22";
+  const blue    = "#4aa8ff";
+  const blue2   = "#2b6ea8";
+  const coat    = "#1b1b22"; // dark coat
+  const coat2   = "#2a2a34";
+  const scarf   = "#8a2eff"; // violet accent
+  const skirt   = "#2a2232";
+  const sock    = "#c9c0ae";
+  const boot    = "#141418";
+  const buckle  = "#bdb6a8";
+
+  // Helpers
+  function fill(x, y, w, h, c){
+    ctx.fillStyle = c;
     ctx.fillRect(x, y, w, h);
   }
-  function oBox(x, y, w, h, fill){
-    ctx.fillStyle = fill;
+  function oFill(x, y, w, h, c){
+    ctx.fillStyle = c;
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = outline;
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
   }
+  function dot(x, y, c){
+    fill(x, y, px, px, c);
+  }
 
-  // ========= SILHOUETTE LAYERS =========
-
-  // Cape-ish back cloth (subtle, not full cape)
+  // --- cloak shadow behind body (soft) ---
   ctx.save();
-  ctx.globalAlpha = 0.65;
-  box(sx + 3*px, y + 9*px, 10*px, 10*px, "rgba(20,40,30,.45)");
+  ctx.globalAlpha = 0.28;
+  fill(sx + 3*px, y + 11*px, 12*px, 12*px, "#000");
   ctx.restore();
 
-  // ---- HEAD (big + soft) ----
-  // Head base (stepped edges)
-  box(sx + 4*px, y + 1*px, 8*px, 7*px, skin);
-  box(sx + 5*px, y + 0*px, 6*px, 1*px, skin); // top rounding hint
+  // --- HEAD ---
+  // Head base (rounded-ish)
+  fill(sx + (5+headTurn)*px, y + 1*px, 8*px, 7*px, skin);
+  fill(sx + (6+headTurn)*px, y + 0*px, 6*px, 1*px, skin);
 
-  // Hair cap
-  box(sx + 4*px, y + 1*px, 8*px, 3*px, hair);
-  box(sx + 3*px, y + 2*px, 10*px, 2*px, hair);
-
-  // Side bangs (Ghibli softness)
-  box(sx + 3*px, y + 4*px, 2*px, 2*px, hair);
-  box(sx + 11*px, y + 4*px, 2*px, 2*px, hair);
-
-  // Eyes (big but not anime)
-  box(sx + 6*px, y + 4*px, 1*px, 1*px, eye);
-  box(sx + 9*px, y + 4*px, 1*px, 1*px, eye);
-  // tiny highlight
+  // Hair cap + bangs
+  fill(sx + (5+headTurn)*px, y + 1*px, 8*px, 3*px, hair2);
+  fill(sx + (4+headTurn)*px, y + 2*px, 10*px, 2*px, hair2);
+  // bright hair top
   ctx.save();
   ctx.globalAlpha = 0.9;
-  box(sx + 6*px, y + 3*px, 1*px, 1*px, eye2);
-  box(sx + 9*px, y + 3*px, 1*px, 1*px, eye2);
+  fill(sx + (5+headTurn)*px, y + 1*px, 8*px, 2*px, hair);
   ctx.restore();
+
+  // Side hair strands
+  fill(sx + (4+headTurn)*px, y + 4*px, 2*px, 3*px, hair2);
+  fill(sx + (12+headTurn)*px, y + 4*px, 2*px, 3*px, hair2);
+
+  // Eyes (blinkable)
+  const blinking = (p.blinkHold || 0) > 0;
+  if (blinking){
+    // sleepy line blink
+    fill(sx + (7+headTurn)*px, y + 4*px, 2*px, 1*px, eye);
+    fill(sx + (10+headTurn)*px, y + 4*px, 2*px, 1*px, eye);
+  } else {
+    // big Ghibli-ish blue eyes
+    fill(sx + (7+headTurn)*px, y + 4*px, 2*px, 2*px, blue2);
+    fill(sx + (10+headTurn)*px, y + 4*px, 2*px, 2*px, blue2);
+    dot(sx + (7+headTurn)*px, y + 4*px, blue);
+    dot(sx + (10+headTurn)*px, y + 4*px, blue);
+    // tiny highlight
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    dot(sx + (8+headTurn)*px, y + 4*px, "#fff");
+    dot(sx + (11+headTurn)*px, y + 4*px, "#fff");
+    ctx.restore();
+    // pupil
+    dot(sx + (8+headTurn)*px, y + 5*px, eye);
+    dot(sx + (11+headTurn)*px, y + 5*px, eye);
+  }
 
   // Blush
   ctx.save();
   ctx.globalAlpha = 0.9;
-  box(sx + 5*px, y + 5*px, 1*px, 1*px, blush);
-  box(sx + 10*px, y + 5*px, 1*px, 1*px, blush);
+  dot(sx + (6+headTurn)*px, y + 6*px, blush);
+  dot(sx + (12+headTurn)*px, y + 6*px, blush);
   ctx.restore();
 
-  // ---- BODY / TUNIC (Zelda read) ----
-  // Torso
-  oBox(sx + 4*px, y + 8*px, 8*px, 7*px, tunic);
-  // Shadow side
+  // Soft outline around head
+  ctx.save();
+  ctx.strokeStyle = outline;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(sx + (5+headTurn)*px, y + 1*px, 8*px, 7*px);
+  ctx.restore();
+
+  // --- NECK + SCARF (violet accent) ---
+  fill(sx + 8*px, y + 8*px, 2*px, 1*px, skin);
+  oFill(sx + 6*px, y + 8*px, 6*px, 2*px, scarf);
+
+  // --- BODY / COAT ---
+  oFill(sx + 5*px, y + 10*px, 8*px, 8*px, coat);
   ctx.save();
   ctx.globalAlpha = 0.55;
-  box(sx + 9*px, y + 8*px, 3*px, 7*px, tunic2);
+  fill(sx + 10*px, y + 10*px, 3*px, 8*px, coat2);
   ctx.restore();
 
-  // Belt
-  box(sx + 4*px, y + 12*px, 8*px, 2*px, belt);
-  // Buckle
-  box(sx + 7*px, y + 12*px, 2*px, 2*px, metal);
+  // Belt buckle hint
+  fill(sx + 8*px, y + 16*px, 2*px, 2*px, buckle);
 
-  // Strap (satchel strap)
-  ctx.save();
-  ctx.globalAlpha = 0.9;
-  box(sx + 5*px, y + 9*px, 1*px, 6*px, strap);
-  box(sx + 6*px, y + 10*px, 1*px, 6*px, strap);
-  ctx.restore();
+  // --- ARMS (swing) ---
+  // Swing amounts: more when running
+  const armSwing = Math.round(swing * (move ? (run ? 2 : 1) : 0));
+  const armSwing2 = Math.round(-swing * (move ? (run ? 2 : 1) : 0));
 
-  // Satchel (small, adventure vibe)
-  oBox(sx + 2*px, y + 12*px, 3*px, 3*px, bag);
-
-  // ---- ARMS ----
   // Left arm
-  box(sx + 2*px, y + 9*px, 2*px, 5*px, tunic);
-  box(sx + 2*px, y + 14*px, 2*px, 2*px, skin);
+  oFill(sx + 3*px, y + (11 + armSwing)*px, 2*px, 6*px, coat);
+  fill(sx + 3*px, y + (17 + armSwing)*px, 2*px, 2*px, skin);
+
   // Right arm
-  box(sx + 12*px, y + 9*px, 2*px, 5*px, tunic);
-  box(sx + 12*px, y + 14*px, 2*px, 2*px, skin);
+  oFill(sx + 13*px, y + (11 + armSwing2)*px, 2*px, 6*px, coat);
+  fill(sx + 13*px, y + (17 + armSwing2)*px, 2*px, 2*px, skin);
 
-  // ---- LEGS / BOOTS ----
-  // Shorts/undercloth hint
-  ctx.save();
-  ctx.globalAlpha = 0.35;
-  box(sx + 5*px, y + 15*px, 6*px, 1*px, "rgba(0,0,0,.5)");
-  ctx.restore();
+  // --- SKIRT / UNDERCLOTH ---
+  oFill(sx + 6*px, y + 18*px, 6*px, 3*px, skirt);
 
-  // Boots
-  oBox(sx + 5*px, y + 16*px, 3*px, 4*px, boots);
-  oBox(sx + 8*px, y + 16*px, 3*px, 4*px, boots);
+  // --- LEGS (walk/run) ---
+  // Two legs alternate forward/back
+  const legA = Math.round(swing * (move ? (run ? 2 : 1) : 0));
+  const legB = Math.round(-swing * (move ? (run ? 2 : 1) : 0));
 
-  // Tiny toe shine (makes it feel “painted” not flat)
+  // Socks (small)
+  fill(sx + 7*px, y + (21 + legA)*px, 2*px, 2*px, sock);
+  fill(sx + 9*px, y + (21 + legB)*px, 2*px, 2*px, sock);
+
+  // Boots (bouncy)
+  oFill(sx + 7*px, y + (23 + legA)*px, 2*px, 3*px, boot);
+  oFill(sx + 9*px, y + (23 + legB)*px, 2*px, 3*px, boot);
+
+  // Tiny toe shine to feel "painted"
   ctx.save();
   ctx.globalAlpha = 0.18;
-  box(sx + 6*px, y + 18*px, 1*px, 1*px, "#fff");
-  box(sx + 9*px, y + 18*px, 1*px, 1*px, "#fff");
+  dot(sx + 7*px, y + (25 + legA)*px, "#fff");
+  dot(sx + 9*px, y + (25 + legB)*px, "#fff");
   ctx.restore();
 }
 
