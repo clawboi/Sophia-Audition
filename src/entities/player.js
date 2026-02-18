@@ -1,14 +1,17 @@
 // src/entities/player.js
-// NPC City Player — Reference Sprite Skeleton v8 (pure pixels, no images)
-// What this version fixes/adds (without changing your game API):
-// - Walk = classic Pokémon: legs go OUT/IN (no thrust). Feet only, clean cadence.
-// - Side walk = simple up/down foot swap, but body/legs are a touch wider.
-// - Punch = an actual SWING: wind-up -> arc forward -> recoil.
-//   Full-length arm segments follow the swing, in the facing direction.
-// - Back (N) = hair + real head/neck (no “hair-only head”).
-// - Inventory/held item hook: if p.held (string/object) or p.item is set,
-//   it draws a small pixel “tool/weapon” in the active hand.
-//   (You can patch in different icons easily in _drawHeldItem()).
+// NPC City Player — Reference Sprite Skeleton v9 (pure pixels, no images)
+// FULL REPLACEMENT. Same API (uses p.x/y/w/h/z/faceX/faceY/jumpT/dodgeT/punchT + optional p.held).
+//
+// What’s fixed vs your v8:
+// - Punch is BIGGER + actual SWING: windup -> hit (max reach) -> recoil.
+//   It extends 6–7 grid pixels at peak (not a tiny jab).
+// - Punch direction is ALWAYS correct (uses face).
+// - Held item is GUARANTEED to work when ONLY p.held is set (no p.item fallback).
+//   It attaches to the active hand in idle/walk/run AND rides the punch tip while punching.
+// - Walk remains clean “Pokémon”: NO thrust. Feet spread OUT/IN for N/S, and UP/DOWN for E/W.
+// - Back view always has head/neck (no hair-only head).
+// - Side sprites slightly wider (less thin) with cleaner arm placement.
+// - Spark follows the swing TIP (optional).
 
 export class Player {
   constructor(){
@@ -105,7 +108,7 @@ export class Player {
       skin:   "#F9BEA6",
       blush:  "#EE8C7B",
       white:  "#FFFFFF",
-      // held-item accents (safe defaults)
+      // held-item accents
       steel:  "#cfd6e6",
       steelS: "#7a86a6",
       wood:   "#8a5a2b",
@@ -141,8 +144,6 @@ export class Player {
     // =========================
     // CLEAN WALK OFFSETS (NO THRUST)
     // =========================
-    // N/S: feet spread OUT/IN in X only (primary). Optional tiny 0/1 lift on stepping foot.
-    // E/W: feet alternate UP/DOWN in Y (classic side shuffle), with a *tiny* run-only nudge.
     const isNS = (face === "N" || face === "S");
     const isEW = (face === "E" || face === "W");
 
@@ -153,15 +154,13 @@ export class Player {
         const spread = stride; // 1 walk / 2 run
         lfX = stepA ? -spread : stepB ? spread : 0;
         rfX = stepA ?  spread : stepB ? -spread : 0;
-
-        // optional tiny lift: only 1px, only the stepping foot, keeps it readable
+        // optional tiny lift
         lfY = stepA ? -1 : 0;
         rfY = stepB ? -1 : 0;
       } else if (isEW){
         const lift = 1;
         lfY = stepA ? -lift : stepB ? lift : 0;
         rfY = stepA ?  lift : stepB ? -lift : 0;
-
         const nudge = running ? 1 : 0;
         if (face === "E"){ lfX = stepA ? nudge : 0; rfX = stepB ? nudge : 0; }
         if (face === "W"){ lfX = stepA ? -nudge : 0; rfX = stepB ? -nudge : 0; }
@@ -181,63 +180,59 @@ export class Player {
     const rArmOff = stepA ?  armSwing : stepB ? -armSwing : 0;
 
     // =========================
-    // PUNCH = REAL SWING (windup -> arc -> recoil)
+    // PUNCH = BIG REAL SWING
     // =========================
-    // We keep using p.punchT (0..1, counting down in your code).
-    // swingP goes 0..1 forward through the animation.
+    // p.punchT assumed 0..1 counting down, so progress = 1 - punchT.
     let swingP = 0;
     if (punching){
       const t = Math.max(0, Math.min(1, p.punchT));
       swingP = 1 - t;
     }
 
-    // Direction vector (grid pixels)
-    const dir = this._dirVec(face); // {dx,dy} in {-1,0,1}
+    const dir = this._dirVec(face);      // {dx,dy} in {-1,0,1}
     const perp = { dx: -dir.dy, dy: dir.dx };
 
-    // Swing curve:
-    // - windup: pull back slightly (0..0.25)
-    // - strike: sweep forward in an arc (0.25..0.65)
-    // - recoil: come back toward neutral (0.65..1)
-    const swing = this._swingOffsets(swingP, dir, perp);
+    // BIGGER reach (this is what you wanted)
+    const swing = this._swingOffsetsBig(swingP, dir, perp);
 
-    // Which arm leads (feels natural per facing)
-    // S/E = right leads, N/W = left leads
+    // Which arm leads
     const rightLeads = (face === "S" || face === "E");
 
     // =========================
-    // HELD ITEM (inventory hook)
+    // HELD ITEM (ONLY when holding)
     // =========================
-    const held = p.held ?? null; // ONLY show held item when p.held is set
+    const held = (p.held ?? null); // <-- THIS is the only trigger
 
-    // Route draw by facing
+    // Route draw by facing (each returns the “active hand point” for held item/spark)
+    let tipForSpark = null;
+
     if (face === "S"){
-      this._drawFront(P, C, {
-        blinking, hipX, hipY,
+      tipForSpark = this._drawFront(P, C, {
+        face, blinking, hipX, hipY,
         lfX, lfY, rfX, rfY,
         lArmOff, rArmOff,
         punching, swing, rightLeads,
         held
       });
     } else if (face === "N"){
-      this._drawBack(P, C, {
-        hipX, hipY,
+      tipForSpark = this._drawBack(P, C, {
+        face, hipX, hipY,
         lfX, lfY, rfX, rfY,
         lArmOff, rArmOff,
         punching, swing, rightLeads,
         held
       });
     } else if (face === "E"){
-      this._drawSide(P, C, {
-        dir:"E", hipX, hipY,
+      tipForSpark = this._drawSide(P, C, {
+        face, dir:"E", hipX, hipY,
         lfX, lfY, rfX, rfY,
         lArmOff, rArmOff,
         punching, swing,
         held
       });
     } else {
-      this._drawSide(P, C, {
-        dir:"W", hipX, hipY,
+      tipForSpark = this._drawSide(P, C, {
+        face, dir:"W", hipX, hipY,
         lfX, lfY, rfX, rfY,
         lArmOff, rArmOff,
         punching, swing,
@@ -245,25 +240,25 @@ export class Player {
       });
     }
 
-    // spark can stay if you like it (optional). It now follows the real swing tip.
-    if (punching){
-      this._drawPunchSpark(ctx, p, face);
+    // spark follows the swing tip (optional)
+    if (punching && tipForSpark){
+      this._drawPunchSparkAt(ctx, p, tipForSpark);
     }
   }
 
   // ==========================================================
-  // FRONT (S)
+  // FRONT (S)  - returns tip point for spark
   // ==========================================================
   _drawFront(P, C, s){
     const {
-      blinking, hipX, hipY,
+      face, blinking, hipX, hipY,
       lfX, lfY, rfX, rfY,
       lArmOff, rArmOff,
       punching, swing, rightLeads,
       held
     } = s;
 
-    // ---- HAIR (fuller mass + bun) ----
+    // ---- HAIR ----
     [
       [6,0],[7,0],[8,0],[9,0],
       [5,1],[6,1],[7,1],[8,1],[9,1],[10,1],
@@ -287,12 +282,13 @@ export class Player {
     if (blinking){
       P(7,5,C.hair); P(8,5,C.hair);
     } else {
+      // whites + pupils (navy)
       P(7,5,C.white); P(8,5,C.white);
       P(7,5,C.navy);  P(8,5,C.navy);
       P(7,4,C.white);
     }
 
-    // ---- BODY (shifted by hip sway) ----
+    // ---- BODY (hip sway) ----
     const bx = hipX, by = hipY;
 
     [
@@ -314,46 +310,64 @@ export class Player {
     P(12+bx,9+by,C.tealS);
 
     // ---- ARMS ----
-    // Hand anchor points (front)
-    const Lhand = { x: 4+bx,  y: 13+by + lArmOff };
-    const Rhand = { x: 11+bx, y: 13+by + rArmOff };
+    // shoulders (where arms originate)
+    const Lsh = { x: 5+bx,  y: 11+by };
+    const Rsh = { x: 10+bx, y: 11+by };
+
+    // idle hands
+    const LhandIdle = { x: 4+bx,  y: 13+by + lArmOff };
+    const RhandIdle = { x: 11+bx, y: 13+by + rArmOff };
+
+    let tipPoint = null; // used for spark
 
     if (!punching){
       // left sleeve + hand
       P(4+bx, 11+by + lArmOff, C.shirt2);
       P(4+bx, 12+by + lArmOff, C.shirt1);
-      P(Lhand.x, Lhand.y, C.skin);
+      P(LhandIdle.x, LhandIdle.y, C.skin);
 
       // right sleeve + hand
       P(11+bx, 11+by + rArmOff, C.shirt2);
       P(11+bx, 12+by + rArmOff, C.shirt1);
-      P(Rhand.x, Rhand.y, C.skin);
+      P(RhandIdle.x, RhandIdle.y, C.skin);
 
-      // held item in the “active” hand (right by default)
-      if (held) this._drawHeldItem(P, C, held, "S", /*hand*/Rhand);
+      // HELD ITEM: only if held, in right hand by default (or leading hand feel)
+      if (held){
+        const active = rightLeads ? RhandIdle : LhandIdle;
+        this._drawHeldItem(P, C, held, face, active);
+      }
     } else {
-      // swinging punch
-      const lead = rightLeads ? "R" : "L";
-      const leadHand = (lead === "R") ? Rhand : Lhand;
-      const rearHand = (lead === "R") ? Lhand : Rhand;
+      // SWING: lead arm is a line from shoulder -> mid -> tip
+      const leadIsRight = rightLeads;
+      const sh = leadIsRight ? Rsh : Lsh;
 
-      // rear arm stays tucked (2px)
-      this._drawArmSegments(P, C, rearHand, { dx: 0, dy: -1 }, 2, /*hand*/false);
+      // big arc endpoints
+      const mid = { x: sh.x + swing.midOff.dx, y: sh.y + swing.midOff.dy };
+      const tip = { x: sh.x + swing.tipOff.dx, y: sh.y + swing.tipOff.dy };
 
-      // lead arm swing: arc offsets in swing.tipOff and swing.midOff
-      // draw 3-5 segments so it feels like a real arm, not a stick
-      this._drawSwingArm(P, C, leadHand, swing, /*segments*/4);
+      // rear arm tucks (opposite side)
+      const rearOff = leadIsRight ? lArmOff : rArmOff;
+      const rearX = leadIsRight ? (4+bx) : (11+bx);
+      P(rearX, 11+by + rearOff, C.shirt2);
+      P(rearX, 12+by + rearOff, C.shirt1);
+      P(rearX, 13+by + rearOff, C.skin);
 
-     // HELD ITEM — attaches to correct hand position
-if (held){
-  const handX = (rightLeads ? 11 : 4) + hipX;
-  const handY = 12 + hipY + (rightLeads ? rArmOff : lArmOff);
+      // draw swing arm
+      this._plotLine(P, sh, mid, C.shirt2);
+      this._plotLine(P, mid, tip, C.shirt2);
+      // thickness/shade
+      P(mid.x, mid.y, C.shirt1);
+      // fist
+      P(tip.x, tip.y, C.skin);
+      // extra fist pixel for “impact”
+      P(tip.x + Math.sign(swing.tipOff.dx), tip.y + Math.sign(swing.tipOff.dy), C.skin);
 
-  this._drawHeldItem(P, C, held, face, {
-    x: handX,
-    y: handY
-  });
-}
+      // HELD ITEM follows the TIP while punching
+      if (held){
+        this._drawHeldItem(P, C, held, face, tip);
+      }
+
+      tipPoint = tip;
     }
 
     // ---- PANTS ----
@@ -363,11 +377,10 @@ if (held){
     ].forEach(([x,y])=>P(x+bx,y+by,C.pants));
     [ [9,13],[10,13],[10,12] ].forEach(([x,y])=>P(x+bx,y+by,C.navy));
 
-    // ---- LEGS (short) + SOCKS ----
+    // ---- LEGS ----
     const Lx = 6+bx, Rx = 9+bx;
     const y14 = 14+by, y15 = 15+by, y16 = 16+by;
 
-    // compact leg read: swing leg bends at y15
     const Lswing = (lfX !== 0 || lfY !== 0);
     const Rswing = (rfX !== 0 || rfY !== 0);
 
@@ -380,7 +393,7 @@ if (held){
     P(Lx,y16,C.white);
     P(Rx,y16,C.white);
 
-    // ---- SHOES (spread / lift only) ----
+    // shoes
     const shoeY = 17+by;
 
     const lfx = Lx + lfX, lfy = shoeY + lfY;
@@ -394,14 +407,16 @@ if (held){
     P(rfx,   rfy+1, C.navy);
     P(rfx-1, rfy+1, C.navy);
     P(rfx,   rfy+2, C.white);
+
+    return tipPoint;
   }
 
   // ==========================================================
-  // BACK (N) — head/neck exists
+  // BACK (N)  - returns tip point for spark
   // ==========================================================
   _drawBack(P, C, s){
     const {
-      hipX, hipY,
+      face, hipX, hipY,
       lfX, lfY, rfX, rfY,
       lArmOff, rArmOff,
       punching, swing, rightLeads,
@@ -435,15 +450,20 @@ if (held){
       [5,11],[6,11],[7,11],[8,11],[9,11],[10,11],
     ].forEach(([x,y])=>P(x+bx,y+by,C.shirt2));
 
-    // straps more visible in back
+    // straps (back)
     [ [5,8],[5,9],[5,10] ].forEach(([x,y])=>P(x+bx,y+by,C.tealS));
     [ [10,8],[10,9],[10,10] ].forEach(([x,y])=>P(x+bx,y+by,C.tealS));
     P(3+bx,9+by,C.tealS);
     P(12+bx,9+by,C.tealS);
 
-    // arms (back view: simpler)
-    const Lhand = { x: 4+bx,  y: 13+by + lArmOff };
-    const Rhand = { x: 11+bx, y: 13+by + rArmOff };
+    // arms (simpler from behind)
+    const Lsh = { x: 5+bx,  y: 11+by };
+    const Rsh = { x: 10+bx, y: 11+by };
+
+    const LhandIdle = { x: 4+bx,  y: 13+by + lArmOff };
+    const RhandIdle = { x: 11+bx, y: 13+by + rArmOff };
+
+    let tipPoint = null;
 
     if (!punching){
       P(4+bx, 11+by + lArmOff, C.shirt2);
@@ -452,17 +472,37 @@ if (held){
       P(11+bx, 11+by + rArmOff, C.shirt2);
       P(11+bx, 12+by + rArmOff, C.shirt1);
 
-      // held item (show in right hand by default)
-      if (held) this._drawHeldItem(P, C, held, "N", Rhand);
+      if (held){
+        const active = rightLeads ? RhandIdle : LhandIdle;
+        this._drawHeldItem(P, C, held, face, active);
+      }
     } else {
-      // a visible swing from behind: lead arm sweeps a bit
-      const lead = rightLeads ? Rhand : Lhand;
-      this._drawSwingArm(P, C, lead, swing, 4);
+      const leadIsRight = rightLeads;
+      const sh = leadIsRight ? Rsh : Lsh;
 
-      if (held) this._drawHeldItem(P, C, held, "N", {
-        x: lead.x + swing.tipOff.dx,
-        y: lead.y + swing.tipOff.dy
-      });
+      const mid = { x: sh.x + swing.midOff.dx, y: sh.y + swing.midOff.dy };
+      const tip = { x: sh.x + swing.tipOff.dx, y: sh.y + swing.tipOff.dy };
+
+      // rear tucked sleeve
+      const rearX = leadIsRight ? (4+bx) : (11+bx);
+      const rearOff = leadIsRight ? lArmOff : rArmOff;
+      P(rearX, 11+by + rearOff, C.shirt2);
+      P(rearX, 12+by + rearOff, C.shirt1);
+
+      // swing sleeve
+      this._plotLine(P, sh, mid, C.shirt2);
+      this._plotLine(P, mid, tip, C.shirt2);
+      P(mid.x, mid.y, C.shirt1);
+
+      // fist
+      P(tip.x, tip.y, C.shirt2);
+      P(tip.x, tip.y, C.skin);
+
+      if (held){
+        this._drawHeldItem(P, C, held, face, tip);
+      }
+
+      tipPoint = tip;
     }
 
     // pants
@@ -472,7 +512,7 @@ if (held){
     ].forEach(([x,y])=>P(x+bx,y+by,C.pants));
     [ [9,13],[10,13],[10,12] ].forEach(([x,y])=>P(x+bx,y+by,C.navy));
 
-    // legs short + animated
+    // legs
     const Lx = 6+bx, Rx = 9+bx;
     const y14 = 14+by, y15 = 15+by, y16 = 16+by;
 
@@ -501,14 +541,16 @@ if (held){
     P(rfx,   rfy+1, C.navy);
     P(rfx-1, rfy+1, C.navy);
     P(rfx,   rfy+2, C.white);
+
+    return tipPoint;
   }
 
   // ==========================================================
-  // SIDE (E/W) — slightly wider
+  // SIDE (E/W) - returns tip point for spark
   // ==========================================================
   _drawSide(P, C, s){
     const {
-      dir, hipX, hipY,
+      face, dir, hipX, hipY,
       lfX, lfY, rfX, rfY,
       lArmOff, rArmOff,
       punching, swing,
@@ -518,7 +560,7 @@ if (held){
     const bx = hipX, by = hipY;
     const flip = (x) => dir === "E" ? x : (15 - x);
 
-    // hair profile + back mass
+    // hair profile + bulk
     [
       [6,0],[7,0],[8,0],
       [5,1],[6,1],[7,1],[8,1],[9,1],
@@ -526,10 +568,11 @@ if (held){
       [5,3],[6,3],[7,3],[8,3],[9,3],
       [5,4],[9,4],
       [4,3],[4,4],
-      [10,2],[10,3]
+      [10,2],[10,3],
+      [10,4] // extra width
     ].forEach(([x,y])=>P(flip(x),y,C.hair));
 
-    // face profile (slightly wider)
+    // face profile (wider)
     [
       [7,3],[8,3],[9,3],
       [7,4],[8,4],[9,4],
@@ -551,29 +594,37 @@ if (held){
     P(flip(5+bx),9+by,C.tealS);
     P(flip(6+bx),9+by,C.teal);
 
-    // arms (profile)
-    const hand = { x: flip(4+bx), y: 13+by + ((dir==="E")?lArmOff:rArmOff) };
+    // shoulders
+    const sh = { x: flip(6+bx), y: 12+by };
+
+    // idle hand position (profile)
+    const aOff = (dir === "E") ? lArmOff : rArmOff;
+    const handIdle = { x: flip(4+bx), y: 13+by + aOff };
+
+    let tipPoint = null;
 
     if (!punching){
-      const aOff = (dir === "E") ? lArmOff : rArmOff;
       P(flip(4+bx), 11+by + aOff, C.shirt2);
       P(flip(4+bx), 12+by + aOff, C.shirt1);
-      P(hand.x, hand.y, C.skin);
+      P(handIdle.x, handIdle.y, C.skin);
 
-      if (held) this._drawHeldItem(P, C, held, dir, hand);
+      if (held) this._drawHeldItem(P, C, held, face, handIdle);
     } else {
-      // swing punch in profile: arm arcs forward
-      // start point is shoulder-ish (profile)
-      const shoulder = { x: flip(5+bx), y: 12+by };
-      const tip = { x: shoulder.x + (dir==="E" ? swing.tipOff.dx : -swing.tipOff.dx), y: shoulder.y + swing.tipOff.dy };
-      const mid = { x: shoulder.x + (dir==="E" ? swing.midOff.dx : -swing.midOff.dx), y: shoulder.y + swing.midOff.dy };
+      // swing in profile: use mirrored swing.x depending on dir
+      const sx = (dir === "E") ? 1 : -1;
 
-      // segments
-      this._plotLine(P, C, shoulder, mid, C.shirt2);
-      this._plotLine(P, C, mid, tip, C.shirt2);
+      const mid = { x: sh.x + swing.midOff.dx * sx, y: sh.y + swing.midOff.dy };
+      const tip = { x: sh.x + swing.tipOff.dx * sx, y: sh.y + swing.tipOff.dy };
+
+      this._plotLine(P, sh, mid, C.shirt2);
+      this._plotLine(P, mid, tip, C.shirt2);
+      P(mid.x, mid.y, C.shirt1);
       P(tip.x, tip.y, C.skin);
+      P(tip.x + sx, tip.y, C.skin);
 
-      if (held) this._drawHeldItem(P, C, held, dir, tip);
+      if (held) this._drawHeldItem(P, C, held, face, tip);
+
+      tipPoint = tip;
     }
 
     // pants (wider)
@@ -602,17 +653,19 @@ if (held){
     const offY = (lfY || rfY);
     const offX = (lfX || rfX);
 
-    const sx = legX + (dir==="E"?offX:-offX);
-    const sy = shoeY + offY;
+    const sx2 = legX + (dir==="E"?offX:-offX);
+    const sy2 = shoeY + offY;
 
-    P(sx, sy, C.navy);
-    P(sx, sy+1, C.navy);
-    P(sx + (dir==="E"?1:-1), sy+1, C.navy);
-    P(sx, sy+2, C.white);
+    P(sx2, sy2, C.navy);
+    P(sx2, sy2+1, C.navy);
+    P(sx2 + (dir==="E"?1:-1), sy2+1, C.navy);
+    P(sx2, sy2+2, C.white);
+
+    return tipPoint;
   }
 
   // ==========================================================
-  // SWING HELPERS
+  // BIG SWING OFFSETS (the important part)
   // ==========================================================
   _dirVec(face){
     if (face === "E") return { dx: 1, dy: 0 };
@@ -621,78 +674,49 @@ if (held){
     return { dx: 0, dy: 1 }; // S
   }
 
-  _swingOffsets(p, dir, perp){
-    // clamp
+  _swingOffsetsBig(p, dir, perp){
     p = Math.max(0, Math.min(1, p));
 
     // phases
-    const windEnd = 0.25;
-    const hitEnd  = 0.65;
+    const windEnd = 0.22;
+    const hitEnd  = 0.60;
 
-    // base reach
-    const reach = 4; // full arm feel
-    const arc   = 2; // sideways arc amount
+    // BIGGER reach + arc
+    const reach = 8; // <<< makes punch visibly longer
+    const arc   = 4; // <<< makes it swing, not poke
 
     let tip = { dx: 0, dy: 0 };
     let mid = { dx: 0, dy: 0 };
 
     if (p < windEnd){
-      // windup: pull back a bit, slight opposite-perp
-      const t = p / windEnd;
-      const back = Math.round((1 - t) * 2);
-      const side = Math.round((1 - t) * 1);
+      const t = p / windEnd; // 0..1
+      const back = Math.round((1 - t) * 3);
+      const side = Math.round((1 - t) * 2);
       tip = { dx: -dir.dx * back - perp.dx * side, dy: -dir.dy * back - perp.dy * side };
-      mid = { dx: Math.round(tip.dx * 0.6), dy: Math.round(tip.dy * 0.6) };
+      mid = { dx: Math.round(tip.dx * 0.55), dy: Math.round(tip.dy * 0.55) };
     } else if (p < hitEnd){
-      // strike: sweep forward with arc
       const t = (p - windEnd) / (hitEnd - windEnd); // 0..1
       const f = Math.round(t * reach);
-      const s = Math.round(Math.sin(t * Math.PI) * arc); // arc bulge mid-swing
+      const s = Math.round(Math.sin(t * Math.PI) * arc);
       tip = { dx: dir.dx * f + perp.dx * s, dy: dir.dy * f + perp.dy * s };
-      mid = { dx: Math.round(dir.dx * (f * 0.55) + perp.dx * (s * 0.6)),
-              dy: Math.round(dir.dy * (f * 0.55) + perp.dy * (s * 0.6)) };
+      mid = { dx: Math.round(dir.dx * (f * 0.55) + perp.dx * (s * 0.60)),
+              dy: Math.round(dir.dy * (f * 0.55) + perp.dy * (s * 0.60)) };
     } else {
-      // recoil: ease back toward near-forward (not all the way)
       const t = (p - hitEnd) / (1 - hitEnd);
-      const f = Math.round(reach * (1 - 0.35*t));
-      const s = Math.round((1 - t) * 1);
+      const f = Math.round(reach * (1 - 0.45*t)); // recoil but still extended a bit
+      const s = Math.round((1 - t) * 2);
       tip = { dx: dir.dx * f + perp.dx * s, dy: dir.dy * f + perp.dy * s };
-      mid = { dx: Math.round(dir.dx * (f * 0.55) + perp.dx * (s * 0.6)),
-              dy: Math.round(dir.dy * (f * 0.55) + perp.dy * (s * 0.6)) };
+      mid = { dx: Math.round(dir.dx * (f * 0.55) + perp.dx * (s * 0.60)),
+              dy: Math.round(dir.dy * (f * 0.55) + perp.dy * (s * 0.60)) };
     }
 
     return { tipOff: tip, midOff: mid };
   }
 
-  _drawSwingArm(P, C, handBase, swing, segments){
-    // Shoulder is 2px “above” the handBase for front/back readability
-    const shoulder = { x: handBase.x, y: handBase.y - 2 };
-    const mid = { x: handBase.x + swing.midOff.dx, y: handBase.y + swing.midOff.dy };
-    const tip = { x: handBase.x + swing.tipOff.dx, y: handBase.y + swing.tipOff.dy };
-
-    // Draw sleeve from shoulder->mid->tip (hand)
-    this._plotLine(P, C, shoulder, mid, C.shirt2);
-    this._plotLine(P, C, mid, tip, C.shirt2);
-
-    // Shade on a couple pixels to give “thickness”
-    P(mid.x, mid.y, C.shirt1);
-
-    // Hand
-    P(tip.x, tip.y, C.skin);
-  }
-
-  _drawArmSegments(P, C, handBase, dir, len, drawHand=true){
-    // Draw a simple tucked arm (no swing)
-    for (let i = 0; i < len; i++){
-      const x = handBase.x;
-      const y = handBase.y - i;
-      P(x, y, (i === len-1 && drawHand) ? C.skin : C.shirt2);
-      if (i === 1) P(x, y, C.shirt1);
-    }
-  }
-
-  _plotLine(P, C, a, b, col){
-    // tiny Bresenham-ish for pixel arms/tools
+  // ==========================================================
+  // LINE PLOTTER
+  // ==========================================================
+  _plotLine(P, a, b, col){
     let x0 = a.x|0, y0 = a.y|0;
     let x1 = b.x|0, y1 = b.y|0;
     const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
@@ -710,32 +734,26 @@ if (held){
   // ==========================================================
   // HELD ITEM (inventory hook)
   // ==========================================================
-  _drawHeldItem(P, C, held, faceOrDir, hand){
-    // held can be string ("knife","bat","wrench","gun","flashlight")
-    // or object: { type:"knife", tint:"#..." }
+  _drawHeldItem(P, C, held, face, hand){
     const type = (typeof held === "string") ? held : (held?.type || "tool");
     const tint = (typeof held === "object" && held?.tint) ? held.tint : null;
 
-    // point the item outward based on facing
-    const face = faceOrDir;
+    // outward direction
     let dx = 0, dy = 0;
     if (face === "E"){ dx = 1; dy = 0; }
     else if (face === "W"){ dx = -1; dy = 0; }
     else if (face === "N"){ dx = 0; dy = -1; }
-    else { dx = 0; dy = 1; } // S and "S-like"
+    else { dx = 0; dy = 1; }
 
-    // tiny offset so it sits in the hand, not on top of it
+    // sit just past the fist
     const origin = { x: hand.x + dx, y: hand.y + dy };
 
-    // icons are deliberately tiny so they don't destroy the sprite
     if (type === "knife"){
-      // handle + blade
       P(origin.x, origin.y, C.wood);
       P(origin.x + dx, origin.y + dy, tint || C.steel);
       P(origin.x + dx*2, origin.y + dy*2, tint || C.steel);
       P(origin.x + dx*2 + (dy!==0?1:0), origin.y + dy*2 + (dx!==0?1:0), C.white);
     } else if (type === "bat"){
-      // long stick
       P(origin.x, origin.y, C.wood);
       P(origin.x + dx, origin.y + dy, C.wood);
       P(origin.x + dx*2, origin.y + dy*2, C.wood);
@@ -746,7 +764,6 @@ if (held){
       P(origin.x + dx*2, origin.y + dy*2, tint || C.steel);
       P(origin.x + dx*2 + (dy!==0?1:0), origin.y + dy*2 + (dx!==0?1:0), C.steelS);
     } else if (type === "gun"){
-      // tiny L-shape
       P(origin.x, origin.y, C.navy);
       P(origin.x + dx, origin.y + dy, C.navy);
       P(origin.x + (dy!==0?1:0), origin.y + (dx!==0?1:0), C.navy);
@@ -756,7 +773,6 @@ if (held){
       P(origin.x + dx, origin.y + dy, C.steelS);
       P(origin.x + dx*2, origin.y + dy*2, C.glow);
     } else {
-      // fallback: simple dot
       P(origin.x, origin.y, tint || C.steel);
     }
   }
@@ -769,22 +785,27 @@ if (held){
     return fy >= 0 ? "S" : "N";
   }
 
-  _drawPunchSpark(ctx, p, face){
-    const cx = p.x + p.w/2;
-    const cy = p.y + p.h/2 - (p.z || 0);
+  // Spark that follows the real swing tip (screen-space)
+  _drawPunchSparkAt(ctx, p, tip){
+    const px = 2;
+    const SW = 16, SH = 20;
+    const W = SW * px, H = SH * px;
 
-    let ox = 0, oy = 0;
-    if (face === "E") ox = 18;
-    if (face === "W") ox = -18;
-    if (face === "N") oy = -18;
-    if (face === "S") oy = 18;
+    const cx = p.x + p.w/2;
+    const feetY = p.y + p.h + 2;
+
+    const sx = Math.round(cx - W/2);
+    const sy = Math.round(feetY - H - (p.z || 0));
+
+    const tx = sx + tip.x * px + px; // slight center
+    const ty = sy + tip.y * px + px;
 
     ctx.save();
-    ctx.globalAlpha = 0.75;
+    ctx.globalAlpha = 0.78;
     ctx.strokeStyle = "rgba(255,255,255,.85)";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(cx + ox, cy + oy, 8, 0, Math.PI*2);
+    ctx.arc(tx, ty, 7, 0, Math.PI*2);
     ctx.stroke();
     ctx.restore();
   }
