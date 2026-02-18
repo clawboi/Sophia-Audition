@@ -1,112 +1,124 @@
-// NPC City — World (Townhome District v1: layout-first, no overlap, solid buildings)
-// Drop-in replacement for world.js ONLY.
+// NPC City — World (Townhome District v2: CLEAN layout, NO overlaps, walkable flow)
+// Drop-in replacement for src/world/world.js ONLY.
 //
-// Built to match your reference vibe:
-// - Central green + curvy paths
-// - Townhome blocks surrounding green with alleys between
-// - Parking band on one edge
-// - Pool + tennis + management building cluster
-// - 3 exits (future district transitions)
-// - Minimal props (layout > decoration)
-// - Collisions: buildings + fences + tree trunks (so you walk AROUND things, not over them)
+// Goals (per Ethan):
+// - One district: townhome complex vibe (central green), suburban, clean
+// - Minimal props (layout first)
+// - NO overlaps between buildings/amenities/roads
+// - Collisions: buildings + fences + tree trunks (you cannot walk over structures)
+// - Flow: easy cut-throughs, no annoying detours
 //
 // Notes:
-// - Bush "slowdown" needs support in your movement code. I expose `this.slowZones`
-//   (engine can ignore it safely). If you want slowdown now, paste your movement code next.
+// - Bush slowdown is exposed via slowZones/slowFactorAt but requires engine support.
 
 export class World {
   constructor(){
+    // ===== World size =====
     this.w = 3000;
     this.h = 1800;
 
+    // ===== Spawns =====
     this.spawns = {
-      actor:  { x: 560, y: 980, area:"Briarleaf Townhomes" },
-      thug:   { x: 620, y: 980, area:"Briarleaf Townhomes" },
-      police: { x: 680, y: 980, area:"Briarleaf Townhomes" },
+      actor:  { x: 520, y: 1080, area:"Briarleaf Townhomes" },
+      thug:   { x: 580, y: 1080, area:"Briarleaf Townhomes" },
+      police: { x: 640, y: 1080, area:"Briarleaf Townhomes" },
     };
 
-    // Collections
+    // ===== Collections =====
     this.buildings = [];
     this.yards = [];
     this.props = [];
     this.solids = [];
-    this.slowZones = []; // optional; engine may ignore
+    this.slowZones = [];
+    this.doors = [];
 
     const rng = makeRng(19200);
 
-    // ===== Layout blocks (big shapes) =====
-    this.green = { x: 980, y: 520, w: 1040, h: 760, r: 180 }; // central lawn
-    this.pool  = { x: 2050, y: 1080, w: 360, h: 220, r: 26 };
-    this.tennis= { x: 2050, y: 820,  w: 360, h: 220, r: 26 };
+    // ===== Big shapes (NO overlap) =====
+    // Central green is intentionally smaller/cleaner than v1.
+    this.green = { x: 900, y: 520, w: 920, h: 680, r: 170 };
 
-    // Roads: perimeter + a couple connectors (kept simple)
-    this.roads = buildTownhomeRoads(this.w, this.h, this.green);
+    // Amenity zone lives EAST of the complex, separated by a service road and buffer.
+    // This prevents the "huge building over pool" overlap you showed.
+    this.amenityZone = { x: 2120, y: 520, w: 720, h: 820 };
 
-    // Townhome blocks around the green (long building blocks)
-    buildTownhomeBlocks({
+    // Within amenity zone
+    this.tennis = { x: 2220, y: 580,  w: 420, h: 240, r: 26 };
+    this.pool   = { x: 2220, y: 890,  w: 420, h: 250, r: 26 };
+    this.mgmtB  = { x: 2340, y: 1180, w: 300, h: 150, kind:"mgmt", doors:"north" };
+
+    // Parking band sits SOUTH-WEST (one edge) with defined curbs + 3 entrances.
+    this.parking = { x: 340, y: 1360, w: 1680, h: 260, r: 26 };
+
+    // ===== Roads (simple + clean) =====
+    this.roads = buildRoadsClean(this.w, this.h, this.green, this.amenityZone, this.parking);
+
+    // ===== Townhome blocks around green (segmented with alleys) =====
+    buildTownhomeRing({
       green: this.green,
+      keepOut: [ this.amenityZone, this.parking ], // hard keep-out areas
+      rng,
       addBuilding: (b)=>this.buildings.push(b),
       addYard: (y)=>this.yards.push(y),
       addFence: (f)=>this.solids.push(f),
-      addDoor:  (d)=>{ this.doors.push(d); },
-      rng
     });
 
-    // Pool / Tennis / Management cluster (SE)
-    buildAmenities({
-      pool: this.pool,
+    // ===== Amenities (tennis/pool/mgmt + fence) =====
+    buildAmenitiesClean({
+      zone: this.amenityZone,
       tennis: this.tennis,
+      pool: this.pool,
+      mgmt: this.mgmtB,
       addBuilding: (b)=>this.buildings.push(b),
       addProp: (p)=>this.props.push(p),
       addSolid: (s)=>this.solids.push(s),
     });
 
-    // Parking band (south edge) + lots (visual), with a few car silhouettes (non-solid for now)
-    buildParkingBand({
-      W: this.w,
-      H: this.h,
+    // ===== Parking (curbs solids, a few cars visual) =====
+    buildParkingClean({
+      lot: this.parking,
       addProp: (p)=>this.props.push(p),
       addSolid: (s)=>this.solids.push(s),
     });
 
-    // Minimal trees + a few bushes (bushes are slowZones, not solids)
-    addMinimalNature({
+    // ===== Minimal nature (trees as solids trunks, a couple lamps/benches) =====
+    addNatureClean({
       rng,
       green: this.green,
-      pool: this.pool,
-      tennis: this.tennis,
+      amenityZone: this.amenityZone,
       addProp: (p)=>this.props.push(p),
       addSolid: (s)=>this.solids.push(s),
       addSlow: (z)=>this.slowZones.push(z),
     });
 
-    // Doors + landmarks for "Press E" later
-    this.doors = [];
+    // ===== Doors (for future E interactions) =====
     addDoorsForBuildings(this.buildings, this.doors);
 
+    // ===== Landmarks =====
     this.landmarks = [
-      { id:"green", x: this.green.x + this.green.w*0.52, y: this.green.y + 18, text:"Central Green", hint:"Walk" },
-      { id:"pool",  x: this.pool.x + 40,  y: this.pool.y - 12,  text:"Pool", hint:"Swim (soon)" },
-      { id:"tennis",x: this.tennis.x+40,  y: this.tennis.y - 12,text:"Tennis", hint:"Play (soon)" },
-      { id:"mgmt",  x: 2260, y: 1320, text:"Management", hint:"Missions (soon)" },
+      { id:"green",  x: this.green.x + this.green.w*0.52, y: this.green.y + 16, text:"Central Green", hint:"Walk" },
+      { id:"tennis", x: this.tennis.x + 18, y: this.tennis.y - 10, text:"Tennis", hint:"Play (soon)" },
+      { id:"pool",   x: this.pool.x + 18,   y: this.pool.y - 10,   text:"Pool", hint:"Swim (soon)" },
+      { id:"mgmt",   x: this.mgmtB.x + 24,  y: this.mgmtB.y - 10,  text:"Management", hint:"Missions (soon)" },
+      { id:"parking",x: this.parking.x + 20, y: this.parking.y - 16, text:"Parking", hint:"Cars (soon)" },
 
-      // Exits (district transitions)
-      { id:"exit_w", x: 120,  y: 980,  text:"Exit West", hint:"Downtown (soon)" },
+      // Exits (future)
+      { id:"exit_w", x: 120,  y: 1080, text:"Exit West", hint:"Downtown (soon)" },
       { id:"exit_n", x: 1500, y: 120,  text:"Exit North", hint:"Boulevard (soon)" },
       { id:"exit_e", x: 2880, y: 720,  text:"Exit East", hint:"Apartments (soon)" },
     ];
 
-    // Collisions: buildings + fences + tree trunks + amenity fences + parking curbs
-    // Buildings: inset slightly so movement feels clean
+    // ===== Collisions =====
+    // Buildings inset so you can slide along walls without snagging.
     for (const b of this.buildings){
-      this.solids.push({ x: b.x+8, y: b.y+10, w: b.w-16, h: b.h-18 });
+      this.solids.push({ x: b.x+8, y: b.y+10, w: b.w-16, h: b.h-18, tag:"building" });
     }
 
     // Keep player inside world bounds
-    this.solids.push({ x: -200, y: -200, w: this.w+400, h: 180, tag:"bounds" });              // top
-    this.solids.push({ x: -200, y: this.h+20, w: this.w+400, h: 180, tag:"bounds" });         // bottom
-    this.solids.push({ x: -200, y: -200, w: 180, h: this.h+400, tag:"bounds" });              // left
-    this.solids.push({ x: this.w+20, y: -200, w: 180, h: this.h+400, tag:"bounds" });         // right
+    this.solids.push({ x: -240, y: -240, w: this.w+480, h: 200, tag:"bounds" });               // top
+    this.solids.push({ x: -240, y: this.h+40, w: this.w+480, h: 200, tag:"bounds" });          // bottom
+    this.solids.push({ x: -240, y: -240, w: 200, h: this.h+480, tag:"bounds" });               // left
+    this.solids.push({ x: this.w+40, y: -240, w: 200, h: this.h+480, tag:"bounds" });          // right
   }
 
   getSpawn(role){ return this.spawns[role] || this.spawns.actor; }
@@ -129,13 +141,12 @@ export class World {
     return best;
   }
 
-  // Optional helper: returns slowdown factor (1 = normal, <1 slower)
-  // Only used if your movement code calls it.
+  // Optional helper for slowdown zones (engine must call it)
   slowFactorAt(px, py){
     let f = 1;
     for (const z of this.slowZones){
       if (px>=z.x && px<=z.x+z.w && py>=z.y && py<=z.y+z.h){
-        f = Math.min(f, z.f || 0.6);
+        f = Math.min(f, z.f || 0.65);
       }
     }
     return f;
@@ -151,23 +162,23 @@ export class World {
     // Base ground
     drawGround(ctx, 0, 0, this.w, this.h);
 
-    // Central green + paths
+    // Green + paths
     drawGreen(ctx, this.green);
     drawGreenPaths(ctx, this.green);
 
-    // Roads + sidewalks (on top of grass)
+    // Roads
     drawRoads(ctx, this.roads);
 
-    // Parking band (visual only layer is props; curbs are solids)
-    // (already built into props/solids)
+    // Parking (pad)
+    drawParkingPad(ctx, this.parking);
 
-    // Amenities (pool/tennis) base pads
-    drawAmenityPads(ctx, this.pool, this.tennis);
+    // Amenity pads
+    drawAmenityPads(ctx, this.tennis, this.pool, this.amenityZone);
 
-    // Yards (small lawns around buildings)
+    // Yards
     for (const y of this.yards) drawYard(ctx, y);
 
-    // Buildings (2.5D: draw shadow first)
+    // Buildings (shadow + block)
     for (const b of this.buildings){
       drawBuildingShadow(ctx, b);
       if (b.kind === "townhome") drawTownhomeBlock(ctx, b);
@@ -178,18 +189,18 @@ export class World {
     // Props depth sort
     const propsSorted = [...this.props].sort((a,b)=>(a.baseY||a.y)-(b.baseY||b.y));
     for (const pr of propsSorted){
-      if (pr.type === "tree")    drawTree(ctx, pr.x, pr.y, pr.s||1);
-      if (pr.type === "bush")    drawBush(ctx, pr.x, pr.y, pr.s||1);
-      if (pr.type === "lamp")    drawLamp(ctx, pr.x, pr.y, pr.s||1);
-      if (pr.type === "bench")   drawBench(ctx, pr.x, pr.y, pr.s||1);
-      if (pr.type === "dumpster")drawDumpster(ctx, pr.x, pr.y, pr.s||1);
-      if (pr.type === "car")     drawCar(ctx, pr.x, pr.y, pr.s||1, pr.c||0);
-      if (pr.type === "sign")    drawSign(ctx, pr.x, pr.y, pr.s||1, pr.t||"");
+      if (pr.type === "tree")     drawTree(ctx, pr.x, pr.y, pr.s||1);
+      if (pr.type === "bush")     drawBush(ctx, pr.x, pr.y, pr.s||1);
+      if (pr.type === "lamp")     drawLamp(ctx, pr.x, pr.y, pr.s||1);
+      if (pr.type === "bench")    drawBench(ctx, pr.x, pr.y, pr.s||1);
+      if (pr.type === "dumpster") drawDumpster(ctx, pr.x, pr.y, pr.s||1);
+      if (pr.type === "car")      drawCar(ctx, pr.x, pr.y, pr.s||1, pr.c||0);
+      if (pr.type === "sign")     drawSign(ctx, pr.x, pr.y, pr.s||1, pr.t||"");
     }
 
-    // Landmark text only near player is handled by UI; here we keep it subtle:
+    // Subtle labels
     ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial";
-    ctx.fillStyle = "rgba(0,0,0,.35)";
+    ctx.fillStyle = "rgba(0,0,0,.32)";
     for (const lm of this.landmarks) ctx.fillText(lm.text, lm.x, lm.y);
 
     ctx.restore();
@@ -200,7 +211,7 @@ export class World {
 
 /* ===================== Roads ===================== */
 
-function buildTownhomeRoads(W, H, green){
+function buildRoadsClean(W, H, green, amenityZone, parking){
   const asphalt = [];
   const sidewalk = [];
   const marks = [];
@@ -210,184 +221,194 @@ function buildTownhomeRoads(W, H, green){
     asphalt.push ({ x, y, w, h, r });
   };
 
-  // Perimeter-ish road loop (top / left curve feel / bottom)
-  addRoad(220, 260, 2560, 160, 30);          // north
-  addRoad(160, 420, 220, 1080, 44);          // west vertical (slightly wider curve vibe)
-  addRoad(220, 1500, 2560, 160, 30);         // south
-  addRoad(2680, 420, 220, 920, 44);          // east vertical
+  // Outer loop (kept clean)
+  addRoad(240, 260, 2520, 160, 30);   // north
+  addRoad(160, 420, 220, 1080, 44);   // west
+  addRoad(240, 1500, 2520, 160, 30);  // south
+  addRoad(2680, 420, 220, 920, 44);   // east
 
-  // Two internal connectors (to make it feel like a complex)
-  addRoad(860, 740, 1240, 140, 26);          // mid connector
-  addRoad(1440, 920, 180, 520, 26);          // down to amenities
+  // Internal connector around green (light residential feel)
+  addRoad(green.x-140, green.y+green.h*0.42, green.w+280, 140, 26);
 
-  // Lane marks (minimal)
-  for (let i=0;i<28;i++) marks.push({ x: 300 + i*88, y: 340, w: 34, h: 4 });
-  for (let i=0;i<26;i++) marks.push({ x: 300 + i*88, y: 1580, w: 34, h: 4 });
-  for (let i=0;i<14;i++) marks.push({ x: 1518, y: 980 + i*58, w: 4, h: 26 });
+  // Service road leading to amenities (prevents visual overlap)
+  addRoad(1960, 520, 180, 860, 26);
+
+  // Lane marks
+  for (let i=0;i<26;i++) marks.push({ x: 320 + i*92, y: 340, w: 34, h: 4 });
+  for (let i=0;i<26;i++) marks.push({ x: 320 + i*92, y: 1580, w: 34, h: 4 });
+  for (let i=0;i<14;i++) marks.push({ x: 2048, y: 600 + i*58, w: 4, h: 26 });
 
   return { asphalt, sidewalk, marks, driveways: [] };
 }
 
-/* ===================== Townhome Blocks ===================== */
+/* ===================== Townhomes ===================== */
 
-function buildTownhomeBlocks({ green, addBuilding, addYard, addFence, rng }){
-  // Build 4 long blocks around the green with alleys between them.
-  // Each block also gets small yard patches (visual) and fences (solids) to keep the complex readable.
+function buildTownhomeRing({ green, keepOut, rng, addBuilding, addYard, addFence }){
+  // Ring placement around the green, with buffers so NOTHING overlaps:
+  const pad = 90;         // buffer from green edge
+  const blockThick = 150; // townhome depth
+  const alley = 80;       // gap between segments
 
-  const blocks = [
-    // North row (facing green)
-    { x: green.x-120, y: green.y-240, w: green.w+240, h: 150, kind:"townhome", doors:"south" },
-    // South row
-    { x: green.x-120, y: green.y+green.h+90, w: green.w+240, h: 150, kind:"townhome", doors:"north" },
-    // West row
-    { x: green.x-260, y: green.y-40, w: 170, h: green.h+80, kind:"townhome", doors:"east" },
-    // East row
-    { x: green.x+green.w+90, y: green.y-40, w: 170, h: green.h+80, kind:"townhome", doors:"west" },
-  ];
+  // North row (3 segments)
+  placeHorizontalRow(green.x - 80, green.y - pad - blockThick, green.w + 160, blockThick, 3, alley, "south", addBuilding, addYard, addFence);
 
-  // Split each long block into segments with alley gaps (no overlap guaranteed)
-  for (const b of blocks){
-    const segments = (b.w > b.h) ? 3 : 2;
-    if (b.w > b.h){
-      const segW = (b.w - 2*70) / segments;
-      for (let i=0;i<segments;i++){
-        const x = b.x + i*(segW+70);
-        addBuilding({ kind:"townhome", x: Math.round(x), y:b.y, w: Math.round(segW), h:b.h, doors:b.doors, variant:i%3 });
-        addYard({ x: Math.round(x)+12, y:b.y-34, w: Math.round(segW)-24, h: 26 });
-        addYard({ x: Math.round(x)+12, y:b.y+b.h+8, w: Math.round(segW)-24, h: 26 });
-        // fences behind blocks (thin solids)
-        addFence({ x: Math.round(x)+6, y:b.y-8, w: Math.round(segW)-12, h: 8, tag:"fence" });
-        addFence({ x: Math.round(x)+6, y:b.y+b.h, w: Math.round(segW)-12, h: 8, tag:"fence" });
-      }
-    } else {
-      const segH = (b.h - 70) / segments;
-      for (let i=0;i<segments;i++){
-        const y = b.y + i*(segH+70);
-        addBuilding({ kind:"townhome", x:b.x, y: Math.round(y), w:b.w, h: Math.round(segH), doors:b.doors, variant:i%3 });
-        addYard({ x: b.x-34, y: Math.round(y)+12, w: 26, h: Math.round(segH)-24 });
-        addYard({ x: b.x+b.w+8, y: Math.round(y)+12, w: 26, h: Math.round(segH)-24 });
-        addFence({ x: b.x-8, y: Math.round(y)+6, w: 8, h: Math.round(segH)-12, tag:"fence" });
-        addFence({ x: b.x+b.w, y: Math.round(y)+6, w: 8, h: Math.round(segH)-12, tag:"fence" });
-      }
-    }
+  // South row
+  placeHorizontalRow(green.x - 80, green.y + green.h + pad, green.w + 160, blockThick, 3, alley, "north", addBuilding, addYard, addFence);
+
+  // West column (2 segments)
+  placeVerticalCol(green.x - pad - 170, green.y - 10, 170, green.h + 20, 2, alley, "east", addBuilding, addYard, addFence);
+
+  // East column (2 segments), but stop BEFORE amenity zone (critical!)
+  // East row is clamped so it never intrudes into service/amenities.
+  const eastX = green.x + green.w + pad;
+  const eastW = 170;
+  const eastY = green.y - 10;
+  const eastH = green.h + 20;
+  if (!rectOverlapsAny({x:eastX,y:eastY,w:eastW,h:eastH}, keepOut)){
+    placeVerticalCol(eastX, eastY, eastW, eastH, 2, alley, "west", addBuilding, addYard, addFence);
+  } else {
+    // If overlap would happen (shouldn't), shrink height to fit
+    const safe = shrinkToAvoid({x:eastX,y:eastY,w:eastW,h:eastH}, keepOut);
+    placeVerticalCol(safe.x, safe.y, safe.w, safe.h, 2, alley, "west", addBuilding, addYard, addFence);
   }
 
-  // A few additional internal smaller buildings near entries (keeps it “complex-like”)
-  addBuilding({ kind:"club", x: green.x-260, y: green.y+green.h+10, w: 210, h: 120, doors:"north" });
-  addBuilding({ kind:"club", x: green.x+green.w+50, y: green.y-170, w: 210, h: 120, doors:"south" });
+  // Two small "club" buildings near corners, placed safely away from amenities/parking
+  addBuilding({ kind:"club", x: green.x-320, y: green.y+green.h+40, w: 220, h: 120, doors:"north" });
+  addBuilding({ kind:"club", x: green.x+green.w+70, y: green.y-190, w: 220, h: 120, doors:"south" });
+}
 
-  // Dumpster area (SW corner near parking)
-  // (visual prop, plus a small fence solid around it so it feels like an enclosure)
-  // We'll place props in addMinimalNature to keep all props together.
+function placeHorizontalRow(x, y, w, h, segments, gap, doors, addBuilding, addYard, addFence){
+  const segW = Math.floor((w - gap*(segments-1)) / segments);
+  for (let i=0;i<segments;i++){
+    const bx = Math.round(x + i*(segW + gap));
+    const b = { kind:"townhome", x: bx, y: Math.round(y), w: segW, h, doors, variant: i%3 };
+    addBuilding(b);
+    // yard strips (visual)
+    addYard({ x: bx+12, y: y-34, w: segW-24, h: 26 });
+    addYard({ x: bx+12, y: y+h+8, w: segW-24, h: 26 });
+    // thin fence lines (solids)
+    addFence({ x: bx+6, y: y-8, w: segW-12, h: 8, tag:"fence" });
+    addFence({ x: bx+6, y: y+h, w: segW-12, h: 8, tag:"fence" });
+  }
+}
+
+function placeVerticalCol(x, y, w, h, segments, gap, doors, addBuilding, addYard, addFence){
+  const segH = Math.floor((h - gap*(segments-1)) / segments);
+  for (let i=0;i<segments;i++){
+    const by = Math.round(y + i*(segH + gap));
+    const b = { kind:"townhome", x: Math.round(x), y: by, w, h: segH, doors, variant: i%3 };
+    addBuilding(b);
+    addYard({ x: x-34, y: by+12, w: 26, h: segH-24 });
+    addYard({ x: x+w+8, y: by+12, w: 26, h: segH-24 });
+    addFence({ x: x-8, y: by+6, w: 8, h: segH-12, tag:"fence" });
+    addFence({ x: x+w, y: by+6, w: 8, h: segH-12, tag:"fence" });
+  }
 }
 
 /* ===================== Amenities ===================== */
 
-function buildAmenities({ pool, tennis, addBuilding, addProp, addSolid }){
-  // Management building by pool
-  const mgmt = { kind:"mgmt", x: pool.x+40, y: pool.y+260, w: 280, h: 140, doors:"north" };
-  addBuilding(mgmt);
+function buildAmenitiesClean({ zone, tennis, pool, mgmt, addBuilding, addProp, addSolid }){
+  // Fence around the amenity zone (solid), with a gate gap near service road
+  const fx = zone.x + 20, fy = zone.y + 20, fw = zone.w - 40, fh = zone.h - 40;
 
-  // Fence around amenity zone (solid)
-  const fence = { x: tennis.x-34, y: tennis.y-40, w: 430, h: 620, tag:"fence" };
-  addSolid({ x: fence.x, y: fence.y, w: fence.w, h: 12, tag:"fence" });
-  addSolid({ x: fence.x, y: fence.y+fence.h-12, w: fence.w, h: 12, tag:"fence" });
-  addSolid({ x: fence.x, y: fence.y, w: 12, h: fence.h, tag:"fence" });
-  addSolid({ x: fence.x+fence.w-12, y: fence.y, w: 12, h: fence.h, tag:"fence" });
+  // Gate gap (on west side) so entry feels real
+  const gate = { x: fx, y: fy + fh*0.55, w: 14, h: 120 };
 
-  // Gate sign (visual)
-  addProp({ type:"sign", x: tennis.x+120, y: tennis.y-58, s: 1, baseY: tennis.y-56, t:"AMENITIES" });
+  // top/bottom
+  addSolid({ x: fx, y: fy, w: fw, h: 12, tag:"fence" });
+  addSolid({ x: fx, y: fy+fh-12, w: fw, h: 12, tag:"fence" });
+  // left side split for gate
+  addSolid({ x: fx, y: fy, w: 12, h: gate.y - fy, tag:"fence" });
+  addSolid({ x: fx, y: gate.y + gate.h, w: 12, h: (fy+fh) - (gate.y+gate.h), tag:"fence" });
+  // right side
+  addSolid({ x: fx+fw-12, y: fy, w: 12, h: fh, tag:"fence" });
 
-  // benches (visual)
-  addProp({ type:"bench", x: pool.x+70, y: pool.y+240, s: 1, baseY: pool.y+242 });
-  addProp({ type:"bench", x: tennis.x+290, y: tennis.y+240, s: 1, baseY: tennis.y+242 });
+  // Buildings
+  addBuilding({ ...mgmt });
+
+  // Visual props
+  addProp({ type:"sign", x: fx+120, y: fy-18, s: 1, baseY: fy-16, t:"AMENITIES" });
+  addProp({ type:"bench", x: pool.x+60, y: pool.y-22, s: 1, baseY: pool.y-20 });
+  addProp({ type:"bench", x: tennis.x+tennis.w-60, y: tennis.y+tennis.h+34, s: 1, baseY: tennis.y+tennis.h+36 });
+
+  // A tiny dumpster by management (visual)
+  addProp({ type:"dumpster", x: mgmt.x+mgmt.w+42, y: mgmt.y+mgmt.h-10, s: 1, baseY: mgmt.y+mgmt.h-8 });
 }
 
-function buildParkingBand({ W, H, addProp, addSolid }){
-  // Parking lot band along the south road, with curbs as solids
-  const lot = { x: 360, y: 1360, w: 1780, h: 240 };
-  // Curbs (solids) so it feels defined, but you can still walk in/out from entrances.
-  // We'll leave 3 gaps (exits) in the curb.
-  const gapW = 120;
+/* ===================== Parking ===================== */
+
+function buildParkingClean({ lot, addProp, addSolid }){
+  // Curbs as solids with 3 gaps (entrances)
+  const gapW = 140;
   const gaps = [
-    { x: lot.x + 260, y: lot.y-6, w: gapW },
-    { x: lot.x + 860, y: lot.y-6, w: gapW },
-    { x: lot.x + 1460, y: lot.y-6, w: gapW },
+    { x: lot.x + 240, w: gapW },
+    { x: lot.x + 760, w: gapW },
+    { x: lot.x + 1280, w: gapW },
   ];
 
-  // Top curb segments
-  let cursor = lot.x;
+  // top curb (split)
   const curbY = lot.y-6;
+  let cursor = lot.x;
   for (const g of gaps){
-    if (g.x > cursor){
-      addSolid({ x: cursor, y: curbY, w: g.x-cursor, h: 10, tag:"curb" });
-    }
+    if (g.x > cursor) addSolid({ x: cursor, y: curbY, w: g.x-cursor, h: 10, tag:"curb" });
     cursor = g.x + g.w;
   }
-  if (cursor < lot.x+lot.w){
-    addSolid({ x: cursor, y: curbY, w: (lot.x+lot.w)-cursor, h: 10, tag:"curb" });
-  }
-  // Bottom curb
+  if (cursor < lot.x+lot.w) addSolid({ x: cursor, y: curbY, w: (lot.x+lot.w)-cursor, h: 10, tag:"curb" });
+
+  // other edges
   addSolid({ x: lot.x, y: lot.y+lot.h-4, w: lot.w, h: 10, tag:"curb" });
-  // Left/right curb
   addSolid({ x: lot.x-4, y: lot.y, w: 10, h: lot.h, tag:"curb" });
   addSolid({ x: lot.x+lot.w-6, y: lot.y, w: 10, h: lot.h, tag:"curb" });
 
-  // Painted rows (visual via props cars + a sign)
   addProp({ type:"sign", x: lot.x+20, y: lot.y-24, s: 1, baseY: lot.y-22, t:"PARKING" });
 
-  // A few parked cars (visual only)
+  // few parked cars (visual only)
   const colors = [0,1,2];
   for (let row=0; row<2; row++){
-    for (let i=0;i<10;i++){
-      const x = lot.x + 90 + i*160;
-      const y = lot.y + 70 + row*110;
-      if (i % 3 === 0) addProp({ type:"car", x, y, s: 1, baseY: y+6, c: colors[(i+row)%3] });
+    for (let i=0;i<9;i++){
+      if (i % 2) continue;
+      const x = lot.x + 120 + i*170;
+      const y = lot.y + 80 + row*120;
+      addProp({ type:"car", x, y, s: 1, baseY: y+6, c: colors[(i+row)%3] });
     }
   }
-
-  // Dumpster enclosure near SW parking
-  addProp({ type:"dumpster", x: lot.x+lot.w+120, y: lot.y+lot.h-30, s: 1, baseY: lot.y+lot.h-28 });
-  addSolid({ x: lot.x+lot.w+80, y: lot.y+lot.h-90, w: 120, h: 12, tag:"fence" });
-  addSolid({ x: lot.x+lot.w+80, y: lot.y+lot.h-90, w: 12, h: 90, tag:"fence" });
-  addSolid({ x: lot.x+lot.w+188, y: lot.y+lot.h-90, w: 12, h: 90, tag:"fence" });
 }
 
-/* ===================== Nature / Props ===================== */
+/* ===================== Nature ===================== */
 
-function addMinimalNature({ rng, green, pool, tennis, addProp, addSolid, addSlow }){
-  // Trees around green (solid trunks)
+function addNatureClean({ rng, green, amenityZone, addProp, addSolid, addSlow }){
+  // Tree ring around green (solid trunks)
   const ring = [
     [green.x+120, green.y+80],
     [green.x+green.w-120, green.y+90],
     [green.x+90, green.y+green.h-90],
     [green.x+green.w-90, green.y+green.h-80],
-    [green.x+green.w*0.5, green.y+green.h+18],
-    [green.x-24, green.y+green.h*0.5],
-    [green.x+green.w+24, green.y+green.h*0.5],
+    [green.x+green.w*0.5, green.y+green.h+26],
+    [green.x-26, green.y+green.h*0.5],
+    [green.x+green.w+26, green.y+green.h*0.5],
   ];
   for (const [x,y] of ring){
     addProp({ type:"tree", x, y, s: 1.05, baseY: y+2 });
-    // trunk collision (small)
     addSolid({ x: x-10, y: y-20, w: 20, h: 20, tag:"tree" });
   }
 
-  // A few lamps (non-solid)
-  addProp({ type:"lamp", x: green.x+80, y: green.y+green.h*0.5, s: 1, baseY: green.y+green.h*0.5+2 });
-  addProp({ type:"lamp", x: green.x+green.w-80, y: green.y+green.h*0.5, s: 1, baseY: green.y+green.h*0.5+2 });
+  // Lamps on green edges
+  addProp({ type:"lamp", x: green.x+70, y: green.y+green.h*0.5, s: 1, baseY: green.y+green.h*0.5+2 });
+  addProp({ type:"lamp", x: green.x+green.w-70, y: green.y+green.h*0.5, s: 1, baseY: green.y+green.h*0.5+2 });
 
-  // Bush slow zones near amenities (optional)
+  // Few bushes near amenity fence (slow zones only, not solid)
   for (let i=0;i<6;i++){
-    const x = tennis.x - 80 + i*70;
-    const y = tennis.y + 560 + (i%2)*14;
+    const x = amenityZone.x + 140 + i*90;
+    const y = amenityZone.y + amenityZone.h - 90 + (i%2)*14;
     addProp({ type:"bush", x, y, s: 1, baseY: y+2 });
     addSlow({ x: x-26, y: y-18, w: 52, h: 36, f: 0.65, tag:"bush" });
   }
 }
 
+/* ===================== Doors ===================== */
+
 function addDoorsForBuildings(buildings, doors){
   for (const b of buildings){
-    // Door zone centered on the “facing” side
     let dx = b.x + b.w/2 - 18;
     let dy = b.y + b.h - 18;
     if (b.doors === "north") dy = b.y - 18;
@@ -401,14 +422,13 @@ function addDoorsForBuildings(buildings, doors){
 /* ===================== Drawing ===================== */
 
 function drawGround(ctx, x, y, w, h){
-  // gritty LA grass base (not too bright)
   ctx.fillStyle = "#4f6530";
   ctx.fillRect(x, y, w, h);
 
-  // LIGHT noise (performance-friendly)
-  ctx.globalAlpha = 0.08;
+  // light stable noise (cheap)
+  ctx.globalAlpha = 0.07;
   ctx.fillStyle = "#000";
-  for (let i=0; i<2800; i++){
+  for (let i=0; i<2600; i++){
     const px = (i*53) % w;
     const py = (i*97) % h;
     if ((i % 2) === 0) ctx.fillRect(x + px, y + py, 1, 1);
@@ -421,37 +441,34 @@ function drawGreen(ctx, g){
   ctx.fillStyle = "#56763a";
   roundRect(ctx, g.x, g.y, g.w, g.h, g.r, true);
 
-  // darker edge vignette
   ctx.globalAlpha = 0.10;
   ctx.fillStyle = "#000";
-  roundRect(ctx, g.x+10, g.y+10, g.w-20, g.h-20, Math.max(20,g.r-24), true);
+  roundRect(ctx, g.x+10, g.y+10, g.w-20, g.h-20, Math.max(20,g.r-26), true);
   ctx.globalAlpha = 1;
 }
 
 function drawGreenPaths(ctx, g){
-  // Curvy paths: a loop + 2 diagonals (match your screenshot feel)
   ctx.globalAlpha = 0.70;
   ctx.fillStyle = "#d6c7ab";
 
-  // Loop
-  roundRect(ctx, g.x+90, g.y+86, g.w-180, g.h-172, Math.max(24,g.r-80), true);
+  // loop
+  roundRect(ctx, g.x+86, g.y+80, g.w-172, g.h-160, Math.max(24,g.r-78), true);
 
-  // Inner grass (carve back)
+  // carve back inner grass
   ctx.globalAlpha = 0.96;
   ctx.fillStyle = "#56763a";
-  roundRect(ctx, g.x+130, g.y+124, g.w-260, g.h-248, Math.max(20,g.r-110), true);
+  roundRect(ctx, g.x+122, g.y+114, g.w-244, g.h-228, Math.max(20,g.r-106), true);
 
-  // Diagonals
-  ctx.globalAlpha = 0.68;
+  // two diagonals
+  ctx.globalAlpha = 0.66;
   ctx.fillStyle = "#d6c7ab";
-  rotRect(ctx, g.x+g.w*0.35, g.y+g.h*0.30, 520, 22, -0.35);
-  rotRect(ctx, g.x+g.w*0.55, g.y+g.h*0.62, 540, 22, 0.28);
+  rotRect(ctx, g.x+g.w*0.36, g.y+g.h*0.32, 500, 22, -0.35);
+  rotRect(ctx, g.x+g.w*0.58, g.y+g.h*0.62, 520, 22, 0.28);
 
   ctx.globalAlpha = 1;
 }
 
 function drawRoads(ctx, roads){
-  // sidewalks first
   for (const s of roads.sidewalk){
     ctx.fillStyle = "#bdb6a8";
     roundRect(ctx, s.x, s.y, s.w, s.h, s.r || 16, true);
@@ -464,14 +481,13 @@ function drawRoads(ctx, roads){
     ctx.globalAlpha = 1;
   }
 
-  // asphalt
   for (const r of roads.asphalt){
     ctx.fillStyle = "#24242c";
     roundRect(ctx, r.x, r.y, r.w, r.h, r.r || 18, true);
 
     ctx.globalAlpha = 0.10;
     ctx.fillStyle = "#000";
-    for (let i=0; i<560; i++){
+    for (let i=0; i<520; i++){
       const px = r.x + ((i*29) % r.w);
       const py = r.y + ((i*71) % r.h);
       if ((i % 3) === 0) ctx.fillRect(px, py, 1, 1);
@@ -479,35 +495,54 @@ function drawRoads(ctx, roads){
     ctx.globalAlpha = 1;
   }
 
-  // lane marks
   ctx.globalAlpha = 0.30;
   ctx.fillStyle = "#efe8d6";
   for (const m of roads.marks) ctx.fillRect(m.x, m.y, m.w, m.h);
   ctx.globalAlpha = 1;
 }
 
-function drawAmenityPads(ctx, pool, tennis){
-  // Tennis pad
+function drawParkingPad(ctx, lot){
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = "#2a2a33";
+  roundRect(ctx, lot.x, lot.y, lot.w, lot.h, lot.r, true);
+
+  // subtle striping
+  ctx.globalAlpha = 0.10;
+  ctx.fillStyle = "#fff";
+  for (let i=0;i<16;i++){
+    ctx.fillRect(lot.x+90+i*95, lot.y+20, 36, 2);
+    ctx.fillRect(lot.x+90+i*95, lot.y+lot.h-26, 36, 2);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawAmenityPads(ctx, tennis, pool, zone){
+  // zone walkway pad (helps separate)
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = "#d6c7ab";
+  roundRect(ctx, zone.x+60, zone.y+60, zone.w-120, zone.h-120, 36, true);
+  ctx.globalAlpha = 1;
+
+  // tennis
   ctx.globalAlpha = 0.95;
   ctx.fillStyle = "#3f6f66";
   roundRect(ctx, tennis.x, tennis.y, tennis.w, tennis.h, tennis.r, true);
-  // Court lines (simple)
   ctx.globalAlpha = 0.30;
-  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = "rgba(255,255,255,.55)";
+  ctx.lineWidth = 2;
   roundRect(ctx, tennis.x+24, tennis.y+24, tennis.w-48, tennis.h-48, 12, false);
   ctx.globalAlpha = 1;
 
-  // Pool deck
+  // pool deck
   ctx.globalAlpha = 0.92;
   ctx.fillStyle = "#cdbb9c";
   roundRect(ctx, pool.x-18, pool.y-18, pool.w+36, pool.h+36, pool.r+18, true);
 
-  // Pool water
+  // pool water
   ctx.globalAlpha = 0.95;
   ctx.fillStyle = "#1d6b66";
   roundRect(ctx, pool.x, pool.y, pool.w, pool.h, pool.r, true);
 
-  // water highlights (light)
   ctx.globalAlpha = 0.12;
   ctx.fillStyle = "#fff";
   for (let i=0; i<22; i++){
@@ -537,11 +572,9 @@ function drawTownhomeBlock(ctx, b){
   ctx.fillStyle = "#b9b0a1";
   roundRect(ctx, x, y, w, h, 14, true);
 
-  // roof band
   ctx.fillStyle = "rgba(0,0,0,.18)";
   roundRect(ctx, x+10, y+10, w-20, 22, 10, true);
 
-  // repeating windows/doors to imply multiple units
   ctx.globalAlpha = 0.28;
   ctx.fillStyle = "#13131a";
   const units = Math.max(3, Math.floor(w / 170));
@@ -553,13 +586,11 @@ function drawTownhomeBlock(ctx, b){
   }
   ctx.globalAlpha = 1;
 
-  // subtle grime base
   ctx.globalAlpha = 0.12;
   ctx.fillStyle = "#000";
   roundRect(ctx, x+8, y+h-18, w-16, 12, 8, true);
   ctx.globalAlpha = 1;
 
-  // slight variant accent
   const accents = ["rgba(138,46,255,.04)","rgba(138,46,255,.06)","rgba(138,46,255,.08)"];
   ctx.fillStyle = accents[variant%3];
   ctx.fillRect(x, y, w, 10);
@@ -617,7 +648,6 @@ function drawTree(ctx, x, y, s){
   ctx.fillStyle = "#476b33";
   blob(ctx, x, topY, 24*s, 14*s, 0.06);
 
-  // ground shadow
   ctx.globalAlpha = 0.18;
   ctx.fillStyle = "#000";
   ctx.beginPath();
@@ -719,6 +749,23 @@ function aabb(a,b){
          a.x + a.w > b.x &&
          a.y < b.y + b.h &&
          a.y + a.h > b.y;
+}
+
+function rectOverlapsAny(r, arr){
+  for (const o of arr){
+    if (aabb(r, o)) return true;
+  }
+  return false;
+}
+
+function shrinkToAvoid(r, arr){
+  // Simple: shrink height until it no longer overlaps (used as a last-resort safety)
+  let out = { ...r };
+  for (let tries=0; tries<40; tries++){
+    if (!rectOverlapsAny(out, arr)) return out;
+    out = { ...out, h: Math.max(200, out.h - 40) };
+  }
+  return out;
 }
 
 function roundRect(ctx, x, y, w, h, r, fill){
