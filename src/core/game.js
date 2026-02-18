@@ -435,7 +435,13 @@ export class Game {
       ctx.globalAlpha = 1;
     }
 
-    ctx.restore();
+    // ... draw player ...
+
+// NEW: draw above-layer props (tree canopies, etc.)
+this.world.drawAbove?.(ctx, this.camera);
+
+ctx.restore();
+
   }
 }
 
