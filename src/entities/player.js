@@ -1,7 +1,7 @@
 // src/entities/player.js
-// NPC City Player — "Reference Sprite" remake (no images, pure pixel placements)
-// Matches the provided sprite: sizing, palette, shape, straps, hoodie, pants, shoes.
-// 16x20 grid, px=2. Simple pleasing walk: alternating leg lift + tiny arm swing.
+// NPC City Player — reference sprite remake (pure pixels)
+// CLEAN WALK: only feet animate (walk + run). No long-leg lift, no arm swing.
+// Running = faster cadence + slightly bigger foot stride.
 
 export class Player {
   constructor(){
@@ -55,7 +55,7 @@ export class Player {
     const acting = (p.jumpT > 0) || (p.dodgeT > 0) || (p.punchT > 0);
 
     // step
-    const stepRate = moving ? (running ? 10.0 : 7.3) : 1.0;
+    const stepRate = moving ? (running ? 12.5 : 8.2) : 1.0;
     this._step += dt * stepRate;
 
     // blink
@@ -70,7 +70,7 @@ export class Player {
     }
     const blinking = this._blinkHold > 0;
 
-    // ===== SIZE (matches reference feel) =====
+    // ===== SIZE =====
     const px = 2;
     const SW = 16;
     const SH = 20;
@@ -81,24 +81,24 @@ export class Player {
     const cx = p.x + p.w/2;
     const feetY = p.y + p.h + 2;
 
-    // tiny bob (very subtle)
-    const bob = (!acting && moving) ? Math.sin(this._step * 2.0) * 0.35 : 0;
+    // no bob while moving (clean look)
+    const bob = (!acting && !moving) ? (Math.sin(now * 0.0017) * 0.25) : 0;
 
     const sx = Math.round(cx - W/2);
     const sy = Math.round(feetY - H - (p.z || 0) + bob);
 
-    // ===== exact palette sampled from your reference =====
+    // ===== palette (sampled from ref) =====
     const C = {
-      teal:   "#309988", // (48,153,136)
-      tealS:  "#3B6364", // (59,99,100)
-      navy:   "#31325A", // (49,50,90)
-      hair:   "#402632", // (64,38,50~51)
-      pants:  "#4D5499", // (77,84,153)
-      shirt1: "#703E50", // (112,62,80)
-      shirt2: "#7E3541", // (126,53,65)
-      shirt3: "#7F3441", // (127,52~53,65)
-      skin:   "#F9BEA6", // (249,190,166)
-      blush:  "#EE8C7B", // (238,140,123)
+      teal:   "#309988",
+      tealS:  "#3B6364",
+      navy:   "#31325A",
+      hair:   "#402632",
+      pants:  "#4D5499",
+      shirt1: "#703E50",
+      shirt2: "#7E3541",
+      shirt3: "#7F3441",
+      skin:   "#F9BEA6",
+      blush:  "#EE8C7B",
       white:  "#FFFFFF"
     };
 
@@ -116,25 +116,44 @@ export class Player {
     ctx.fill();
     ctx.restore();
 
-    // ===== walk offsets (pleasant, minimal) =====
-    // Alternate leg lift by 1px and micro arm swing.
-    const a = Math.sin(this._step);
-    const b = Math.sin(this._step + Math.PI);
+    // ===== CLEAN FOOT ANIM =====
+    // Only shoes move. Legs stay fixed and shorter.
+    // We do a simple 2-frame step: swap which foot is "forward" and add tiny toe shift.
+    const stepBit = moving ? ((Math.sin(this._step) > 0) ? 1 : 0) : 0;
 
-    const liftA = moving ? Math.round(Math.max(0, a) * 1) : 0;
-    const liftB = moving ? Math.round(Math.max(0, b) * 1) : 0;
+    // stride: walk = 0..1px toe shift, run = 0..2px toe shift
+    const stride = moving ? (running ? 2 : 1) : 0;
 
-    const armA = moving ? Math.round((-a) * 1) : 0;
-    const armB = moving ? Math.round((-b) * 1) : 0;
+    // In top-down, forward/back depends on facing axis:
+    // - if moving mostly E/W: shift in X
+    // - else: shift in Y
+    const side = (face === "E" || face === "W");
+    const dirSign = (face === "E" || face === "S") ? 1 : -1;
 
-    const punching = p.punchT > 0;
+    // which shoe is forward this frame
+    // A = left shoe (x=6), B = right shoe (x=9)
+    const shoeAx = 6;
+    const shoeBx = 9;
+
+    // base shoe y positions (kept)
+    const shoeY0 = 17;
+    const toeY0  = 19;
+
+    // foot offsets (only applied to shoes + toe highlights)
+    const aForward = (stepBit === 1);
+    const bForward = !aForward;
+
+    const aOffX = (moving && side) ? (aForward ? stride*dirSign : 0) : 0;
+    const bOffX = (moving && side) ? (bForward ? stride*dirSign : 0) : 0;
+
+    const aOffY = (moving && !side) ? (aForward ? stride*dirSign : 0) : 0;
+    const bOffY = (moving && !side) ? (bForward ? stride*dirSign : 0) : 0;
 
     // ==========================================================
-    // DRAW ORDER: hair -> face -> hoodie/straps -> arms -> pants -> legs/shoes
+    // DRAW ORDER: hair -> face -> hoodie/straps -> arms -> pants -> legs -> shoes (animated)
     // ==========================================================
 
-    // ---- HAIR (bun/top + sides) ----
-    // top bun block
+    // ---- HAIR ----
     [
       [6,0],[7,0],[8,0],[9,0],
       [5,1],[6,1],[7,1],[8,1],[9,1],[10,1],
@@ -142,7 +161,6 @@ export class Player {
       [5,3],[6,3],[7,3],[8,3],[9,3],[10,3],
       [5,4],[10,4],
     ].forEach(([x,y])=>P(x,y,C.hair));
-    // side hair lumps
     [ [4,3],[4,4],[11,3],[11,4] ].forEach(([x,y])=>P(x,y,C.hair));
 
     // ---- FACE ----
@@ -153,18 +171,15 @@ export class Player {
       [6,6],[7,6],[8,6],[9,6],
     ].forEach(([x,y])=>P(x,y,C.skin));
 
-    // blush dots
     P(6,6,C.blush); P(9,6,C.blush);
 
-    // eyes (tiny, like ref)
     if (blinking){
       P(7,5,C.hair); P(8,5,C.hair);
     } else {
       P(7,5,C.navy); P(8,5,C.navy);
     }
 
-    // ---- HOODIE / SHIRT (maroon) ----
-    // shoulders/hoodie top
+    // ---- HOODIE / SHIRT ----
     [
       [5,7],[6,7],[7,7],[8,7],[9,7],[10,7],
       [4,8],[5,8],[6,8],[7,8],[8,8],[9,8],[10,8],[11,8],
@@ -173,37 +188,29 @@ export class Player {
       [5,11],[6,11],[7,11],[8,11],[9,11],[10,11],
     ].forEach(([x,y])=>P(x,y,C.shirt2));
 
-    // hoodie shading (subtle)
     [ [10,8],[10,9],[10,10],[9,10],[9,9] ].forEach(([x,y])=>P(x,y,C.shirt1));
     [ [6,10],[7,10],[8,10] ].forEach(([x,y])=>P(x,y,C.shirt3));
 
-    // ---- STRAPS (teal) ----
-    // left strap
+    // straps
     [ [5,8],[5,9],[5,10] ].forEach(([x,y])=>P(x,y,C.teal));
-    // right strap
     [ [10,8],[10,9],[10,10] ].forEach(([x,y])=>P(x,y,C.teal));
-    // strap shadow bits (like ref tealS)
     [ [6,9],[9,9] ].forEach(([x,y])=>P(x,y,C.tealS));
-
-    // small backpack side nubs
     P(3,9,C.tealS);
     P(12,9,C.tealS);
 
-    // ---- ARMS (hoodie sleeves) + HANDS ----
+    // arms (STATIC now, cleaner)
+    const punching = p.punchT > 0;
     if (!punching){
-      // left sleeve
-      P(4,11 + armA, C.shirt2);
-      P(4,12 + armA, C.shirt1);
-      // left hand
-      P(4,13 + armA, C.skin);
+      // left sleeve + hand
+      P(4,11, C.shirt2);
+      P(4,12, C.shirt1);
+      P(4,13, C.skin);
 
-      // right sleeve
-      P(11,11 + armB, C.shirt2);
-      P(11,12 + armB, C.shirt1);
-      // right hand
-      P(11,13 + armB, C.skin);
+      // right sleeve + hand
+      P(11,11, C.shirt2);
+      P(11,12, C.shirt1);
+      P(11,13, C.skin);
     } else {
-      // punch pose: extend toward facing
       let pxDirX = 0, pxDirY = 0;
       if (face === "E") pxDirX = 2;
       if (face === "W") pxDirX = -2;
@@ -221,38 +228,37 @@ export class Player {
       this._drawPunchSpark(ctx, p, face);
     }
 
-    // ---- PANTS / SHORTS (blue) ----
+    // pants
     [
       [5,12],[6,12],[7,12],[8,12],[9,12],[10,12],
       [5,13],[6,13],[7,13],[8,13],[9,13],[10,13],
     ].forEach(([x,y])=>P(x,y,C.pants));
-
-    // pants shading (tiny)
     [ [9,13],[10,13],[10,12] ].forEach(([x,y])=>P(x,y,C.navy));
 
-    // ---- LEGS (skin) + SOCKS (white) + SHOES (navy) ----
-    // Legs are skinny like ref, with alternating lift.
-    // Left leg
-    P(6,14 + (0 - liftA), C.skin);
-    P(6,15 + (0 - liftA), C.skin);
-    P(6,16 + (0 - liftA), C.white); // sock
-    P(6,17 + (0 - liftA), C.navy);  // shoe
-    P(6,18 + (0 - liftA), C.navy);
+    // legs (SHORTER: only 2 skin pixels)
+    // left leg
+    P(6,14, C.skin);
+    P(6,15, C.skin);
+    // right leg
+    P(9,14, C.skin);
+    P(9,15, C.skin);
 
-    // Right leg
-    P(9,14 + (0 - liftB), C.skin);
-    P(9,15 + (0 - liftB), C.skin);
-    P(9,16 + (0 - liftB), C.white);
-    P(9,17 + (0 - liftB), C.navy);
-    P(9,18 + (0 - liftB), C.navy);
+    // socks (static)
+    P(6,16, C.white);
+    P(9,16, C.white);
 
-    // a couple extra shoe pixels to match chunk
-    P(7,18 + (0 - liftA), C.navy);
-    P(8,18 + (0 - liftB), C.navy);
+    // SHOES (animated only)
+    // left shoe
+    P(shoeAx + aOffX, shoeY0 + aOffY, C.navy);
+    P(shoeAx + aOffX, shoeY0+1 + aOffY, C.navy);
+    P(shoeAx+1 + aOffX, shoeY0+1 + aOffY, C.navy); // chunk
+    P(shoeAx + aOffX, toeY0 + aOffY, C.white);      // toe highlight
 
-    // tiny white toe highlight like ref
-    P(6,19 + (0 - liftA), C.white);
-    P(9,19 + (0 - liftB), C.white);
+    // right shoe
+    P(shoeBx + bOffX, shoeY0 + bOffY, C.navy);
+    P(shoeBx + bOffX, shoeY0+1 + bOffY, C.navy);
+    P(shoeBx-1 + bOffX, shoeY0+1 + bOffY, C.navy);
+    P(shoeBx + bOffX, toeY0 + bOffY, C.white);
   }
 
   _faceDir(fx, fy){
