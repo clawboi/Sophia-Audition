@@ -1,10 +1,11 @@
 // src/entities/player.js
-// NPC City Player — Reference Sprite Skeleton vFINAL
-// 16x20 grid, px=2, pure pixels.
-// Directions: S(front), N(back), E/W(side).
-// Walk: classic Pokémon 4-frame + hip weight shift.
-// Punch: arms swing + snap in facing direction.
-// Designed to be the "forever skeleton" you patch art on top of.
+// NPC City Player — Reference Sprite Skeleton v7 (pure pixels, no images)
+// Fixes per your notes:
+// - Walk legs NOT thrusting: N/S uses feet OUT/IN (x spread), E/W uses feet UP/DOWN (y spread)
+// - Punch: one lead arm EXTENDS forward in punch direction + recoil
+// - Back (walking up): head/neck exists (not hair-only)
+// - Side sprites: slightly wider torso/legs (not too thin)
+// - Still classic Pokémon 4-frame walk (0 idle, 1 stepA, 2 idle, 3 stepB)
 
 export class Player {
   constructor(){
@@ -50,7 +51,7 @@ export class Player {
     const moving  = speed > 8;
     const running = speed > 165;
 
-    // update facing only when there is intent (prevents twitch)
+    // update facing only with intent (prevents twitch)
     const fx = p.faceX || 0, fy = p.faceY || 0;
     if (Math.abs(fx) + Math.abs(fy) > 0.25) this._facing = this._faceDir(fx, fy);
     const face = this._facing;
@@ -123,89 +124,110 @@ export class Player {
       const t = this._step % 4;
       frame = (t < 1) ? 0 : (t < 2) ? 1 : (t < 3) ? 2 : 3;
     }
+    const stepA = (frame === 1);
+    const stepB = (frame === 3);
 
-    // stride
+    // run = slightly larger spread, still clean
     const stride = moving ? (running ? 2 : 1) : 0;
 
-    // weight shift on step frames (1 & 3)
-    // hipX/hipY nudges the torso/pants by 1px (classic weight illusion)
-    const isSide = (face === "E" || face === "W");
-    const dirSign = (face === "E" || face === "S") ? 1 : -1;
+    // ===== WALK OFFSETS (NO THRUST) =====
+    // N/S: feet go OUT/IN on X axis (classic top-down vibe)
+    // E/W: feet go UP/DOWN on Y axis
+    //
+    // We keep travel-axis shove basically 0 to avoid the "thrust" look.
 
-    const stepA = (frame === 1); // "left" step
-    const stepB = (frame === 3); // "right" step
+    const isNS = (face === "N" || face === "S");
+    const isEW = (face === "E" || face === "W");
 
-    const hipX = (!acting && moving && isSide) ? (stepA ? 1 : stepB ? -1 : 0) : 0;
-    const hipY = (!acting && moving && !isSide) ? (stepA ? 1 : stepB ? -1 : 0) : 0;
+    // base leg columns (front/back views)
+    const baseL = 6;
+    const baseR = 9;
 
-    // feet forward offsets (only on step frames)
-    const lfForward = stepA; // treat stepA as "left foot forward"
-    const rfForward = stepB;
+    // foot offsets (in sprite pixels)
+    let lfX = 0, lfY = 0, rfX = 0, rfY = 0;
 
-    const lfX = (moving && isSide && lfForward) ? stride * dirSign : 0;
-    const rfX = (moving && isSide && rfForward) ? stride * dirSign : 0;
-    const lfY = (moving && !isSide && lfForward) ? stride * dirSign : 0;
-    const rfY = (moving && !isSide && rfForward) ? stride * dirSign : 0;
+    if (moving && !acting){
+      if (isNS){
+        // StepA: left foot out, right foot in; StepB: opposite
+        const spread = stride; // 1 walk, 2 run
+        lfX = stepA ? -spread : stepB ? spread : 0;
+        rfX = stepA ? spread : stepB ? -spread : 0;
+        // tiny vertical lift just 1px for the stepping foot (optional, subtle)
+        lfY = stepA ? -1 : 0;
+        rfY = stepB ? -1 : 0;
+      } else if (isEW){
+        // Side walk: feet alternate up/down (y), very Pokémon
+        const lift = 1;
+        lfY = stepA ? -lift : stepB ? lift : 0;
+        rfY = stepA ? lift : stepB ? -lift : 0;
+        // slight fore/aft for run only (tiny), keeps side from looking frozen
+        const nudge = running ? 1 : 0;
+        if (face === "E"){ lfX = stepA ? nudge : 0; rfX = stepB ? nudge : 0; }
+        if (face === "W"){ lfX = stepA ? -nudge : 0; rfX = stepB ? -nudge : 0; }
+      }
+    }
 
-    // arms swing opposite the feet while walking (1px)
+    // ===== HIP WEIGHT SHIFT (NO THRUST) =====
+    // Only shift perpendicular, not forward/back.
+    let hipX = 0, hipY = 0;
+    if (moving && !acting){
+      if (isNS){
+        hipX = stepA ? 1 : stepB ? -1 : 0; // sway left/right
+      } else {
+        hipY = stepA ? 1 : stepB ? -1 : 0; // sway up/down on side
+      }
+    }
+
+    // ===== ARM SWING (walk) =====
+    // Opposite the stepping foot, 1px
     const armSwing = (moving && !acting) ? 1 : 0;
-    const lArmOff = lfForward ? -armSwing : rfForward ? armSwing : 0;
-    const rArmOff = lfForward ? armSwing : rfForward ? -armSwing : 0;
+    const lArmOff = stepA ? -armSwing : stepB ? armSwing : 0;
+    const rArmOff = stepA ? armSwing : stepB ? -armSwing : 0;
 
-    // punch snap/recoil
-    // p.punchT assumed 0..1-ish timer; we shape it
-    let punchSnap = 0;
+    // ===== PUNCH SNAP (directional extend) =====
+    // One lead arm extends forward in facing direction, plus recoil.
+    let punchDX = 0, punchDY = 0;
+    let punchAmt = 0;
     if (punching){
       const t = Math.max(0, Math.min(1, p.punchT));
-      // quick snap then recoil: peak around 0.25
-      punchSnap = (t < 0.3) ? (t / 0.3) : Math.max(0, 1 - (t - 0.3) / 0.7);
-      punchSnap = Math.round(punchSnap * 2); // 0..2 px
+      // snap fast then recoil
+      const snap = (t < 0.25) ? (t / 0.25) : Math.max(0, 1 - (t - 0.25) / 0.75);
+      punchAmt = Math.round(snap * 3); // 0..3 px
+      if (face === "E") punchDX = punchAmt;
+      if (face === "W") punchDX = -punchAmt;
+      if (face === "S") punchDY = punchAmt;
+      if (face === "N") punchDY = -punchAmt;
     }
 
-    // directional punch offset
-    let punchDX = 0, punchDY = 0;
-    if (punching){
-      if (face === "E") punchDX = punchSnap;
-      if (face === "W") punchDX = -punchSnap;
-      if (face === "S") punchDY = punchSnap;
-      if (face === "N") punchDY = -punchSnap;
-    }
-
-    // =========================
-    // DRAW ROUTER (by facing)
-    // =========================
+    // route draw by facing
     if (face === "S"){
       this._drawFront(P, C, { blinking, hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, punchDX, punchDY });
     } else if (face === "N"){
       this._drawBack(P, C, { hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, punchDX, punchDY });
     } else if (face === "E"){
-      this._drawSide(P, C, { dir: "E", hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, punchDX, punchDY });
+      this._drawSide(P, C, { dir:"E", hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, punchDX, punchDY });
     } else {
-      this._drawSide(P, C, { dir: "W", hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, punchDX, punchDY });
+      this._drawSide(P, C, { dir:"W", hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, punchDX, punchDY });
     }
 
-    // punch spark (optional, keeps your existing feedback)
     if (punching){
       this._drawPunchSpark(ctx, p, face);
     }
   }
 
   // =========================
-  // SPRITES
+  // FRONT (S)
   // =========================
-
   _drawFront(P, C, s){
     const { blinking, hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, punchDX, punchDY } = s;
 
-    // ---- HAIR (more like reference: fuller top + side mass) ----
-    // top bun + crown
+    // ---- HAIR (closer to ref: fuller mass + bun) ----
     [
       [6,0],[7,0],[8,0],[9,0],
       [5,1],[6,1],[7,1],[8,1],[9,1],[10,1],
       [5,2],[6,2],[7,2],[8,2],[9,2],[10,2],
       [5,3],[6,3],[7,3],[8,3],[9,3],[10,3],
       [5,4],[10,4],
-      // extra side mass (closer to ref)
       [4,2],[4,3],[11,2],[11,3],
       [4,4],[11,4]
     ].forEach(([x,y])=>P(x,y,C.hair));
@@ -228,7 +250,7 @@ export class Player {
       P(7,4,C.white);
     }
 
-    // ---- HOODIE / SHIRT (torso shifted by hip) ----
+    // ---- BODY (shifted by hip sway) ----
     const bx = hipX, by = hipY;
 
     [
@@ -249,7 +271,7 @@ export class Player {
     P(3+bx,9+by,C.tealS);
     P(12+bx,9+by,C.tealS);
 
-    // ---- ARMS (walk swing OR punch snap) ----
+    // ---- ARMS ----
     if (!punching){
       P(4+bx, 11+by + lArmOff, C.shirt2);
       P(4+bx, 12+by + lArmOff, C.shirt1);
@@ -259,55 +281,71 @@ export class Player {
       P(11+bx, 12+by + rArmOff, C.shirt1);
       P(11+bx, 13+by + rArmOff, C.skin);
     } else {
-      // punch: swing arms + snap forward
-      // left arm
-      P(4+bx + punchDX, 12+by + punchDY, C.shirt2);
-      P(5+bx + punchDX, 12+by + punchDY, C.shirt1);
-      P(6+bx + punchDX, 12+by + punchDY, C.skin);
-      // right arm
-      P(11+bx + punchDX, 12+by + punchDY, C.shirt2);
-      P(10+bx + punchDX, 12+by + punchDY, C.shirt1);
-      P(9+bx + punchDX, 12+by + punchDY, C.skin);
+      // directional punch: LEAD arm only extends (clean)
+      const leadLeft = (punchDX < 0) || (punchDY < 0); // N/W tends to use left for readability
+      const leadX = punchDX, leadY = punchDY;
+
+      // rear arm stays near body, lead arm extends
+      // rear
+      P(11+bx, 12+by, C.shirt2);
+      P(10+bx, 12+by, C.shirt1);
+      P(9+bx,  12+by, C.skin);
+
+      // lead (use left side arm pixels)
+      const ax = 4+bx + leadX;
+      const ay = 12+by + leadY;
+      P(ax,   ay, C.shirt2);
+      P(ax+1, ay, C.shirt1);
+      P(ax+2, ay, C.skin);
+
+      // if punching E/S, swap so it feels like correct arm leads
+      if (punchDX > 0 || punchDY > 0){
+        // overwrite: right arm leads
+        // rear left
+        P(4+bx, 12+by, C.shirt2);
+        P(5+bx, 12+by, C.shirt1);
+        P(6+bx, 12+by, C.skin);
+
+        const rx = 11+bx + leadX;
+        const ry = 12+by + leadY;
+        P(rx,   ry, C.shirt2);
+        P(rx-1, ry, C.shirt1);
+        P(rx-2, ry, C.skin);
+      }
     }
 
-    // ---- PANTS (shifted by hip) ----
+    // ---- PANTS ----
     [
       [5,12],[6,12],[7,12],[8,12],[9,12],[10,12],
       [5,13],[6,13],[7,13],[8,13],[9,13],[10,13],
     ].forEach(([x,y])=>P(x+bx,y+by,C.pants));
     [ [9,13],[10,13],[10,12] ].forEach(([x,y])=>P(x+bx,y+by,C.navy));
 
-    // ---- LEGS (short + animated) ----
-    // columns
+    // ---- LEGS (short) + SOCKS ----
     const Lx = 6+bx, Rx = 9+bx;
     const y14 = 14+by, y15 = 15+by, y16 = 16+by;
 
-    // Which leg swings is implied by forward foot offsets:
     const Lswing = (lfX !== 0 || lfY !== 0);
     const Rswing = (rfX !== 0 || rfY !== 0);
 
-    // support = straight; swing = bent + knee toward center
     if (!Lswing){ P(Lx,y14,C.skin); P(Lx,y15,C.skin); }
     else { P(Lx,y15,C.skin); P(Lx+1,y15,C.skin); }
 
     if (!Rswing){ P(Rx,y14,C.skin); P(Rx,y15,C.skin); }
     else { P(Rx,y15,C.skin); P(Rx-1,y15,C.skin); }
 
-    // socks (static for short leg feel)
     P(Lx,y16,C.white);
     P(Rx,y16,C.white);
 
-    // ---- SHOES (animated forward) ----
+    // ---- SHOES (spread / lift only, no thrust) ----
     const shoeY = 17+by;
 
-    // left shoe
     const lfx = Lx + lfX, lfy = shoeY + lfY;
     P(lfx, lfy, C.navy);
     P(lfx, lfy+1, C.navy);
     P(lfx+1, lfy+1, C.navy);
     P(lfx, lfy+2, C.white);
 
-    // right shoe
     const rfx = Rx + rfX, rfy = shoeY + rfY;
     P(rfx, rfy, C.navy);
     P(rfx, rfy+1, C.navy);
@@ -315,8 +353,10 @@ export class Player {
     P(rfx, rfy+2, C.white);
   }
 
+  // =========================
+  // BACK (N) — head/neck exists (not hair-only)
+  // =========================
   _drawBack(P, C, s){
-    // back view: no face/eyes, show hair + hoodie back + straps, same motion logic
     const { hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, punchDX, punchDY } = s;
     const bx = hipX, by = hipY;
 
@@ -330,7 +370,13 @@ export class Player {
       [4,4],[5,4],[10,4],[11,4],
     ].forEach(([x,y])=>P(x,y,C.hair));
 
-    // hoodie back (slightly simpler)
+    // head/neck under hair (so it reads like a skull, not wig)
+    [
+      [6,5],[7,5],[8,5],[9,5],   // back of head
+      [7,6],[8,6],               // neck
+    ].forEach(([x,y])=>P(x,y,C.skin));
+
+    // hoodie back
     [
       [5,7],[6,7],[7,7],[8,7],[9,7],[10,7],
       [4,8],[5,8],[6,8],[7,8],[8,8],[9,8],[10,8],[11,8],
@@ -352,7 +398,7 @@ export class Player {
       P(11+bx, 11+by + rArmOff, C.shirt2);
       P(11+bx, 12+by + rArmOff, C.shirt1);
     } else {
-      // punch from back: still snaps
+      // punch from back: extend one sleeve forward a bit
       P(4+bx + punchDX, 12+by + punchDY, C.shirt2);
       P(11+bx + punchDX,12+by + punchDY, C.shirt2);
     }
@@ -364,7 +410,7 @@ export class Player {
     ].forEach(([x,y])=>P(x+bx,y+by,C.pants));
     [ [9,13],[10,13],[10,12] ].forEach(([x,y])=>P(x+bx,y+by,C.navy));
 
-    // legs (short + animated)
+    // legs short + animated
     const Lx = 6+bx, Rx = 9+bx;
     const y14 = 14+by, y15 = 15+by, y16 = 16+by;
 
@@ -382,7 +428,6 @@ export class Player {
 
     const shoeY = 17+by;
 
-    // shoes
     const lfx = Lx + lfX, lfy = shoeY + lfY;
     P(lfx, lfy, C.navy);
     P(lfx, lfy+1, C.navy);
@@ -396,41 +441,44 @@ export class Player {
     P(rfx, rfy+2, C.white);
   }
 
+  // =========================
+  // SIDE (E/W) — slightly wider (not too thin)
+  // =========================
   _drawSide(P, C, s){
-    // side silhouette: slimmer, 1 eye in profile (optional vibe), straps read as back edge
     const { dir, hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, punchDX, punchDY } = s;
     const bx = hipX, by = hipY;
 
-    const flip = (x) => dir === "E" ? x : (15 - x); // mirror around 16-wide grid
+    const flip = (x) => dir === "E" ? x : (15 - x);
 
-    // hair profile (bun + back mass)
+    // hair profile + back mass
     [
       [6,0],[7,0],[8,0],
       [5,1],[6,1],[7,1],[8,1],[9,1],
       [5,2],[6,2],[7,2],[8,2],[9,2],
       [5,3],[6,3],[7,3],[8,3],[9,3],
       [5,4],[9,4],
-      [4,3],[4,4] // fringe blob
+      [4,3],[4,4],
+      [10,2],[10,3] // extra bulk so side isn't razor-thin
     ].forEach(([x,y])=>P(flip(x),y,C.hair));
 
-    // face profile (small)
+    // face profile (a bit wider)
     [
-      [7,3],[8,3],
-      [7,4],[8,4],
-      [7,5],[8,5],
-      [7,6]
+      [7,3],[8,3],[9,3],
+      [7,4],[8,4],[9,4],
+      [7,5],[8,5],[9,5],
+      [7,6],[8,6],
     ].forEach(([x,y])=>P(flip(x),y,C.skin));
 
-    // single eye dot in profile (clean)
-    P(flip(8),5,C.navy);
+    // eye dot
+    P(flip(9),5,C.navy);
 
-    // hoodie body (thin)
+    // hoodie body (WIDER: 4 columns)
     [
-      [6,7],[7,7],[8,7],
-      [5,8],[6,8],[7,8],[8,8],
-      [5,9],[6,9],[7,9],[8,9],
-      [5,10],[6,10],[7,10],[8,10],
-      [6,11],[7,11],[8,11],
+      [6,7],[7,7],[8,7],[9,7],
+      [5,8],[6,8],[7,8],[8,8],[9,8],
+      [5,9],[6,9],[7,9],[8,9],[9,9],
+      [5,10],[6,10],[7,10],[8,10],[9,10],
+      [6,11],[7,11],[8,11],[9,11],
     ].forEach(([x,y])=>P(flip(x+bx),y+by,C.shirt2));
 
     // strap hint
@@ -439,60 +487,53 @@ export class Player {
 
     // arms (profile)
     if (!punching){
-      // front arm swings more, back arm less
-      const frontArm = (dir === "E") ? 1 : 0; // which side is "front" in our simple profile
-      const aOff = frontArm ? (dir === "E" ? lArmOff : rArmOff) : (dir === "E" ? rArmOff : lArmOff);
-
-      // arm column at x=4-ish in profile
+      // choose one arm offset to represent swing in profile
+      const aOff = (dir === "E") ? lArmOff : rArmOff;
       P(flip(4+bx), 11+by + aOff, C.shirt2);
       P(flip(4+bx), 12+by + aOff, C.shirt1);
       P(flip(4+bx), 13+by + aOff, C.skin);
     } else {
-      // punch profile: snap forward
+      // punch profile: extend forward
       P(flip(4+bx + punchDX), 12+by + punchDY, C.shirt2);
       P(flip(3+bx + punchDX), 12+by + punchDY, C.shirt1);
       P(flip(2+bx + punchDX), 12+by + punchDY, C.skin);
     }
 
-    // pants (profile)
+    // pants (wider)
     [
-      [6,12],[7,12],[8,12],
-      [6,13],[7,13],[8,13]
+      [6,12],[7,12],[8,12],[9,12],
+      [6,13],[7,13],[8,13],[9,13]
     ].forEach(([x,y])=>P(flip(x+bx),y+by,C.pants));
-    P(flip(8+bx),13+by,C.navy);
+    P(flip(9+bx),13+by,C.navy);
 
     // legs (short)
-    // use inner columns in profile
-    const Lx = flip(7+bx);
+    const legX = flip(8+bx);
     const y14 = 14+by, y15 = 15+by, y16 = 16+by;
 
-    // determine swing by whichever foot offset applies more for this direction
-    const swingA = (lfX !== 0 || lfY !== 0);
-    // profile: just animate one leg readably
-    if (!swingA){
-      P(Lx,y14,C.skin);
-      P(Lx,y15,C.skin);
+    const swing = (lfY !== 0 || rfY !== 0 || lfX !== 0 || rfX !== 0);
+    if (!swing){
+      P(legX,y14,C.skin);
+      P(legX,y15,C.skin);
     } else {
-      P(Lx,y15,C.skin);
-      P(Lx + (dir==="E"?-1:1), y15, C.skin);
+      P(legX,y15,C.skin);
+      P(legX + (dir==="E"?-1:1), y15, C.skin);
     }
-    P(Lx,y16,C.white);
+    P(legX,y16,C.white);
 
-    // shoes (profile, one shoe read)
+    // shoe (profile)
     const shoeY = 17+by;
-    // pick forward shoe based on offsets
-    const offX = (dir==="E") ? (lfX || rfX) : (lfX || rfX);
     const offY = (lfY || rfY);
+    const offX = (lfX || rfX);
 
-    P(Lx + (dir==="E"?offX:-offX), shoeY + offY, C.navy);
-    P(Lx + (dir==="E"?offX:-offX), shoeY+1 + offY, C.navy);
-    P(Lx + (dir==="E"?offX:-offX) + (dir==="E"?1:-1), shoeY+1 + offY, C.navy);
-    P(Lx + (dir==="E"?offX:-offX), shoeY+2 + offY, C.white);
+    const sx = legX + (dir==="E"?offX:-offX);
+    const sy = shoeY + offY;
+
+    P(sx, sy, C.navy);
+    P(sx, sy+1, C.navy);
+    P(sx + (dir==="E"?1:-1), sy+1, C.navy);
+    P(sx, sy+2, C.white);
   }
 
-  // =========================
-  // helpers
-  // =========================
   _faceDir(fx, fy){
     if (Math.abs(fx) > Math.abs(fy)) return fx >= 0 ? "E" : "W";
     return fy >= 0 ? "S" : "N";
