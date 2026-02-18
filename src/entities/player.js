@@ -1,13 +1,18 @@
 // src/entities/player.js
-// NPC City Player — v12 (full replacement)
+// NPC City Player — v13 (full replacement)
 //
-// FIXES:
-// 1) Diagonal direction wrong (W+D showing down-right):
-//    - We flip FY internally for direction picking (treat W as UP).
-//    - No need to touch game.js for this.
-// 2) Weapons look behind on side view:
-//    - Side view forces held item direction to pure left/right (front of sprite).
-// 3) Still: 4-dir body sprite, 8-dir attack spark, tight punch, blink, can hold nothing.
+// WHAT YOU ASKED (exact):
+// - When walking DOWN (S): head/face should face down (front sprite).
+// - When walking UP (W): back should face up (back sprite).
+// - Keep your diagonal aiming fix (so W+D doesn’t feel “down-right”).
+// - Punching stays perfect (8-dir attack spark + tight swing).
+// - Side weapons never go “behind” (force pure E/W on side view).
+// - Weapons a little bigger (small bump) via held-item lengths.
+//
+// KEY IDEA:
+// - BODY facing (4-dir sprite) uses RAW fy (so S=front, W=back).
+// - ATTACK direction (8-dir) uses flipped fy (so diagonals feel right for attacks).
+//   This keeps walking correct AND keeps punch direction feeling correct.
 
 export class Player {
   constructor(){
@@ -36,11 +41,12 @@ export class Player {
 
     this._step = 0;
 
-    // IMPORTANT: internal Y flip for direction logic
     const fx = p.faceX || 0;
     const fy = p.faceY || 1;
 
+    // BODY: raw (so S shows front, W shows back)
     this._face4 = this._faceDir4(fx, fy);
+    // ATTACK: flipped (so diagonals for aiming/punch feel right)
     this._atk8  = this._faceDir8(fx, fy);
   }
 
@@ -72,7 +78,9 @@ export class Player {
     const fxRaw = p.faceX || 0;
     const fyRaw = p.faceY || 0;
     if (Math.abs(fxRaw) + Math.abs(fyRaw) > 0.25){
+      // BODY: raw
       this._face4 = this._faceDir4(fxRaw, fyRaw);
+      // ATTACK: flipped
       this._atk8  = this._faceDir8(fxRaw, fyRaw);
     }
 
@@ -297,7 +305,6 @@ export class Player {
       P(11+bx, 12+by + rArmOff, C.shirt1);
       P(Rhand.x, Rhand.y, C.skin);
 
-      // held: use atkVec (diagonals ok in front/back)
       if (held){
         this._drawHeldItem(P, C, held, atkVec, Rhand, true, false, Lhand);
       }
@@ -469,7 +476,7 @@ export class Player {
 
   // =========================
   // SIDE (E/W)
-  // KEY FIX: held item direction forced to pure E/W so it stays in front.
+  // Key: held direction forced to pure E/W so it stays in front.
   // =========================
   _drawSide(P, C, s){
     const { dir, hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, twoHanded } = s;
@@ -539,7 +546,6 @@ export class Player {
       Pf(tip.x, tip.y, C.skin);
 
       if (held){
-        // IMPORTANT: use sideVec here too
         this._drawHeldItem(Pf, C, held, sideVec, tip, true, twoHanded);
       }
     }
@@ -663,7 +669,7 @@ export class Player {
   }
 
   // =========================
-  // HELD ITEM (short + close)
+  // HELD ITEM (short + close) + slightly bigger
   // =========================
   _drawHeldItem(P, C, held, dirVec, hand, tight=true, twoHanded=false, otherHand=null){
     const type = (typeof held === "string") ? held : (held?.type || "tool");
@@ -675,7 +681,13 @@ export class Player {
     // Slightly UP so it doesn't cover feet as much
     const origin = { x: hand.x + dx, y: hand.y + dy - 1 };
 
-    const baseLen = (type === "bat") ? 3 : (type === "knife") ? 2 : 2;
+    // BUMP sizes a bit (your request)
+    const baseLen =
+      (type === "bat") ? 4 :
+      (type === "knife") ? 3 :
+      (type === "gun") ? 3 :
+      3;
+
     const len = twoHanded ? baseLen + 1 : baseLen;
 
     if (type === "knife"){
@@ -691,34 +703,39 @@ export class Player {
       }
 
     } else if (type === "gun"){
+      // small but clearer gun
       P(origin.x, origin.y, C.navy);
       P(origin.x + dx, origin.y + dy, C.navy);
+      P(origin.x + dx*2, origin.y + dy*2, C.navy);
       P(origin.x + (dy!==0?1:0), origin.y + (dx!==0?1:0), C.navy);
-      P(origin.x + dx*2, origin.y + dy*2, C.steelS);
+      P(origin.x + dx*3, origin.y + dy*3, C.steelS);
 
     } else if (type === "flashlight"){
       P(origin.x, origin.y, C.steelS);
       P(origin.x + dx, origin.y + dy, C.steelS);
-      P(origin.x + dx*2, origin.y + dy*2, C.glow);
+      P(origin.x + dx*2, origin.y + dy*2, C.steelS);
+      P(origin.x + dx*3, origin.y + dy*3, C.glow);
 
     } else {
       P(origin.x, origin.y, tint || C.steel);
       P(origin.x + dx, origin.y + dy, tint || C.steelS);
+      P(origin.x + dx*2, origin.y + dy*2, tint || C.steelS);
     }
   }
 
   // =========================
   // DIRECTION HELPERS
-  // IMPORTANT: internal Y flip here
+  // BODY uses RAW fy (fixes your walk facing)
+  // ATTACK uses flipped fy (keeps your diagonal “feel” for punching)
   // =========================
   _faceDir4(fx, fy){
-    const fy2 = -fy; // <--- flip Y for correct W=up logic
-    if (Math.abs(fx) > Math.abs(fy2)) return fx >= 0 ? "E" : "W";
-    return fy2 >= 0 ? "S" : "N";
+    // S (fy >= 0) => FRONT sprite. N (fy < 0) => BACK sprite.
+    if (Math.abs(fx) > Math.abs(fy)) return fx >= 0 ? "E" : "W";
+    return fy >= 0 ? "S" : "N";
   }
 
   _faceDir8(fx, fy){
-    const fy2 = -fy; // <--- flip Y so diagonals map right
+    const fy2 = -fy; // flip ONLY for attack direction
 
     const mag = Math.hypot(fx, fy2);
     if (mag < 0.001) return this._atk8 || "S";
