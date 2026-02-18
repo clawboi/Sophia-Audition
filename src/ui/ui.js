@@ -100,14 +100,14 @@ setInventory({ slotIndex, heldType }){
     hud.className = "hud";
     hud.innerHTML = `
       <div class="pill" id="hud-role">ROLE</div>
-      <div class="pill" id="hud-area">AREA</div>
-      <div class="pill" id="hud-money">$0</div>
-      <div class="pill" id="hud-inv">INV: 1</div>
+<div class="pill" id="hud-area">AREA</div>
+<div class="pill" id="hud-money">$0</div>
+<div class="pill" id="hud-inv">INV: 1</div>
 
-      <div class="stam" aria-label="Stamina">
-        <div class="stam-fill" id="hud-stam"></div>
-      </div>
-    `;
+<div class="stam" aria-label="Stamina">
+  <div class="stam-fill" id="hud-stam"></div>
+</div>
+`;
     this.root.appendChild(hud);
 
     const prompt = document.createElement("div");
