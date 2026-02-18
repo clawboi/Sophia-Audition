@@ -9,10 +9,11 @@ export class World {
 
     // Named spawn zones per role
     this.spawns = {
-      thug:  { x: 420,  y: 1180, area:"South Side" },
-      actor: { x: 1320, y: 520,  area:"Studio Row" },
-      police:{ x: 2140, y: 980,  area:"Civic District" },
-    };
+  // moved outside nearby building blocks so collision doesn't trap you
+  thug:  { x: 820,  y: 1240, area:"South Side" },     // right of the bodega block
+  actor: { x: 980,  y: 640,  area:"Studio Row" },     // below-left of the studio lot
+  police:{ x: 1760, y: 980,  area:"Civic District" }, // left of Police HQ building
+};
 
     // Static colliders (buildings, fences, etc.)
     this.solids = [
