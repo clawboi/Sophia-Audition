@@ -1,18 +1,19 @@
 // src/entities/player.js
-// NPC City Player — v13 (full replacement)
+// NPC City Player — v14 (full replacement)
 //
-// WHAT YOU ASKED (exact):
-// - When walking DOWN (S): head/face should face down (front sprite).
-// - When walking UP (W): back should face up (back sprite).
-// - Keep your diagonal aiming fix (so W+D doesn’t feel “down-right”).
-// - Punching stays perfect (8-dir attack spark + tight swing).
-// - Side weapons never go “behind” (force pure E/W on side view).
-// - Weapons a little bigger (small bump) via held-item lengths.
+// FIXES (based on your screenshots + notes):
+// 1) Walk facing is correct:
+//    - DOWN (S): FRONT sprite (face showing)
+//    - UP (W): BACK sprite (back showing)
+// 2) Legs look centered + clearly TWO legs (front/back):
+//    - Slightly wider stance + clearer shoe pixels.
+// 3) Side weapons always visible IN FRONT and held with TWO hands:
+//    - We draw a dedicated side-view two-hand grip + weapon (no “behind”).
+// 4) Keep: punch feel perfect (8-dir attack spark + tight swing) + diagonal aim feel.
 //
-// KEY IDEA:
-// - BODY facing (4-dir sprite) uses RAW fy (so S=front, W=back).
-// - ATTACK direction (8-dir) uses flipped fy (so diagonals feel right for attacks).
-//   This keeps walking correct AND keeps punch direction feeling correct.
+// Key idea stays:
+// - BODY (4-dir) uses RAW fy.
+// - ATTACK (8-dir) uses flipped fy (so diagonals feel right for punching).
 
 export class Player {
   constructor(){
@@ -25,10 +26,8 @@ export class Player {
 
     this._step = 0;
 
-    // Body facing (4-dir sprite)
-    this._face4 = "S";
-    // Attack direction (8-dir)
-    this._atk8 = "S";
+    this._face4 = "S"; // body
+    this._atk8  = "S"; // attack
   }
 
   reset(p){
@@ -44,10 +43,8 @@ export class Player {
     const fx = p.faceX || 0;
     const fy = p.faceY || 1;
 
-    // BODY: raw (so S shows front, W shows back)
-    this._face4 = this._faceDir4(fx, fy);
-    // ATTACK: flipped (so diagonals for aiming/punch feel right)
-    this._atk8  = this._faceDir8(fx, fy);
+    this._face4 = this._faceDir4(fx, fy); // BODY raw
+    this._atk8  = this._faceDir8(fx, fy); // ATTACK flipped
   }
 
   draw(ctx, p){
@@ -78,10 +75,8 @@ export class Player {
     const fxRaw = p.faceX || 0;
     const fyRaw = p.faceY || 0;
     if (Math.abs(fxRaw) + Math.abs(fyRaw) > 0.25){
-      // BODY: raw
-      this._face4 = this._faceDir4(fxRaw, fyRaw);
-      // ATTACK: flipped
-      this._atk8  = this._faceDir8(fxRaw, fyRaw);
+      this._face4 = this._faceDir4(fxRaw, fyRaw); // BODY raw
+      this._atk8  = this._faceDir8(fxRaw, fyRaw); // ATTACK flipped
     }
 
     const face4 = this._face4;
@@ -144,7 +139,8 @@ export class Player {
       steel:  "#cfd6e6",
       steelS: "#7a86a6",
       wood:   "#8a5a2b",
-      glow:   "#ffea6a"
+      glow:   "#ffea6a",
+      ink:    "rgba(0,0,0,.35)"
     };
 
     const P = (ix, iy, col) => {
@@ -179,7 +175,7 @@ export class Player {
 
     if (moving && !acting){
       if (isNS){
-        const spread = stride;
+        const spread = stride + 1; // <<< a little wider so you SEE two legs
         lfX = stepA ? -spread : stepB ? spread : 0;
         rfX = stepA ?  spread : stepB ? -spread : 0;
         lfY = stepA ? -1 : 0;
@@ -214,17 +210,16 @@ export class Player {
     // held item: allow none
     let held = p.held ?? null;
     if (held === "none") held = null;
-    const twoHanded = !!(typeof held === "object" && held?.twoHanded);
 
     // draw body by 4-dir sprite
     if (face4 === "S"){
-      this._drawFront(P, C, { blinking, hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, twoHanded, atkVec });
+      this._drawFront(P, C, { blinking, hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, atkVec });
     } else if (face4 === "N"){
-      this._drawBack(P, C,  { hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, twoHanded, atkVec });
+      this._drawBack(P, C,  { hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, atkVec });
     } else if (face4 === "E"){
-      this._drawSide(P, C,  { dir:"E", hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, twoHanded, atkVec });
+      this._drawSide(P, C,  { dir:"E", hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held });
     } else {
-      this._drawSide(P, C,  { dir:"W", hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, twoHanded, atkVec });
+      this._drawSide(P, C,  { dir:"W", hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held });
     }
 
     // spark uses 8-dir so diagonals get their own hit mark
@@ -237,7 +232,7 @@ export class Player {
   // FRONT (S)
   // =========================
   _drawFront(P, C, s){
-    const { blinking, hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, twoHanded, atkVec } = s;
+    const { blinking, hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, atkVec } = s;
 
     // HAIR
     [
@@ -306,24 +301,16 @@ export class Player {
       P(Rhand.x, Rhand.y, C.skin);
 
       if (held){
-        this._drawHeldItem(P, C, held, atkVec, Rhand, true, false, Lhand);
+        this._drawHeldItem(P, C, held, atkVec, Rhand, true);
       }
     } else {
       // lead = right
-      const leadHand = Rhand;
-      const followHand = Lhand;
-
-      this._drawSwingArm(P, C, Rshould, leadHand, swing.lead);
-      this._drawSwingArm(P, C, Lshould, followHand, swing.follow);
+      this._drawSwingArm(P, C, Rshould, Rhand, swing.lead);
+      this._drawSwingArm(P, C, Lshould, Lhand, swing.follow);
 
       if (held){
-        const leadTip = { x: leadHand.x + swing.lead.tipOff.dx, y: leadHand.y + swing.lead.tipOff.dy };
-        this._drawHeldItem(P, C, held, atkVec, leadTip, true, twoHanded, followHand);
-
-        if (twoHanded){
-          const followTip = { x: followHand.x + swing.follow.tipOff.dx, y: followHand.y + swing.follow.tipOff.dy };
-          this._plotLine(P, followTip, leadTip, C.wood);
-        }
+        const tip = { x: Rhand.x + swing.lead.tipOff.dx, y: Rhand.y + swing.lead.tipOff.dy };
+        this._drawHeldItem(P, C, held, atkVec, tip, true);
       }
     }
 
@@ -334,35 +321,39 @@ export class Player {
     ].forEach(([x,y])=>P(x+bx,y+by,C.pants));
     [ [9,13],[10,13],[10,12] ].forEach(([x,y])=>P(x+bx,y+by,C.navy));
 
-    // LEGS + SOCKS
-    const Lx = 6+bx, Rx = 9+bx;
+    // LEGS + SOCKS (wider + clearer)
+    const Lx = 6+bx, Rx = 10+bx; // <<< spread so you SEE two legs
     const y14 = 14+by, y15 = 15+by, y16 = 16+by;
 
     const Lswing = (lfX !== 0 || lfY !== 0);
     const Rswing = (rfX !== 0 || rfY !== 0);
 
+    // thighs
     if (!Lswing){ P(Lx,y14,C.skin); P(Lx,y15,C.skin); }
     else { P(Lx,y15,C.skin); P(Lx+1,y15,C.skin); }
 
     if (!Rswing){ P(Rx,y14,C.skin); P(Rx,y15,C.skin); }
     else { P(Rx,y15,C.skin); P(Rx-1,y15,C.skin); }
 
+    // socks
     P(Lx,y16,C.white);
     P(Rx,y16,C.white);
 
-    // SHOES
+    // SHOES (2-wide so each foot reads)
     const shoeY = 17+by;
 
     const lfx = Lx + lfX, lfy = shoeY + lfY;
     P(lfx,   lfy,   C.navy);
+    P(lfx+1, lfy,   C.navy);
     P(lfx,   lfy+1, C.navy);
     P(lfx+1, lfy+1, C.navy);
     P(lfx,   lfy+2, C.white);
 
     const rfx = Rx + rfX, rfy = shoeY + rfY;
     P(rfx,   rfy,   C.navy);
+    P(rfx+1, rfy,   C.navy);
     P(rfx,   rfy+1, C.navy);
-    P(rfx-1, rfy+1, C.navy);
+    P(rfx+1, rfy+1, C.navy);
     P(rfx,   rfy+2, C.white);
   }
 
@@ -370,7 +361,7 @@ export class Player {
   // BACK (N)
   // =========================
   _drawBack(P, C, s){
-    const { hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, twoHanded, atkVec } = s;
+    const { hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, atkVec } = s;
     const bx = hipX, by = hipY;
 
     // HAIR
@@ -416,35 +407,27 @@ export class Player {
       P(11+bx, 12+by + rArmOff, C.shirt1);
 
       if (held){
-        this._drawHeldItem(P, C, held, atkVec, Rhand, true, false, Lhand);
+        this._drawHeldItem(P, C, held, atkVec, Rhand, true);
       }
     } else {
       // lead = left
-      const leadHand = Lhand;
-      const followHand = Rhand;
-
-      this._drawSwingArm(P, C, Lshould, leadHand, swing.lead);
-      this._drawSwingArm(P, C, Rshould, followHand, swing.follow);
+      this._drawSwingArm(P, C, Lshould, Lhand, swing.lead);
+      this._drawSwingArm(P, C, Rshould, Rhand, swing.follow);
 
       if (held){
-        const leadTip = { x: leadHand.x + swing.lead.tipOff.dx, y: leadHand.y + swing.lead.tipOff.dy };
-        this._drawHeldItem(P, C, held, atkVec, leadTip, true, twoHanded, followHand);
-
-        if (twoHanded){
-          const followTip = { x: followHand.x + swing.follow.tipOff.dx, y: followHand.y + swing.follow.tipOff.dy };
-          this._plotLine(P, followTip, leadTip, C.wood);
-        }
+        const tip = { x: Lhand.x + swing.lead.tipOff.dx, y: Lhand.y + swing.lead.tipOff.dy };
+        this._drawHeldItem(P, C, held, atkVec, tip, true);
       }
     }
 
-    // pants + legs
+    // pants + legs (wider + clearer)
     [
       [5,12],[6,12],[7,12],[8,12],[9,12],[10,12],
       [5,13],[6,13],[7,13],[8,13],[9,13],[10,13],
     ].forEach(([x,y])=>P(x+bx,y+by,C.pants));
     [ [9,13],[10,13],[10,12] ].forEach(([x,y])=>P(x+bx,y+by,C.navy));
 
-    const Lx = 6+bx, Rx = 9+bx;
+    const Lx = 6+bx, Rx = 10+bx;
     const y14 = 14+by, y15 = 15+by, y16 = 16+by;
 
     const Lswing = (lfX !== 0 || lfY !== 0);
@@ -463,25 +446,30 @@ export class Player {
 
     const lfx = Lx + lfX, lfy = shoeY + lfY;
     P(lfx,   lfy,   C.navy);
+    P(lfx+1, lfy,   C.navy);
     P(lfx,   lfy+1, C.navy);
     P(lfx+1, lfy+1, C.navy);
     P(lfx,   lfy+2, C.white);
 
     const rfx = Rx + rfX, rfy = shoeY + rfY;
     P(rfx,   rfy,   C.navy);
+    P(rfx+1, rfy,   C.navy);
     P(rfx,   rfy+1, C.navy);
-    P(rfx-1, rfy+1, C.navy);
+    P(rfx+1, rfy+1, C.navy);
     P(rfx,   rfy+2, C.white);
   }
 
   // =========================
   // SIDE (E/W)
-  // Key: held direction forced to pure E/W so it stays in front.
+  // Fixes:
+  // - two legs visible
+  // - weapon always IN FRONT and TWO-HANDED when held
   // =========================
   _drawSide(P, C, s){
-    const { dir, hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held, twoHanded } = s;
+    const { dir, hipX, hipY, lfX, lfY, rfX, rfY, lArmOff, rArmOff, punching, swing, held } = s;
     const bx = hipX, by = hipY;
     const flip = (x) => dir === "E" ? x : (15 - x);
+    const Pf = (ix,iy,col)=>P(flip(ix),iy,col);
 
     // HAIR
     [
@@ -492,7 +480,7 @@ export class Player {
       [5,4],[9,4],
       [4,3],[4,4],
       [10,2],[10,3]
-    ].forEach(([x,y])=>P(flip(x),y,C.hair));
+    ].forEach(([x,y])=>Pf(x,y,C.hair));
 
     // FACE
     [
@@ -500,8 +488,8 @@ export class Player {
       [7,4],[8,4],[9,4],
       [7,5],[8,5],[9,5],
       [7,6],[8,6],
-    ].forEach(([x,y])=>P(flip(x),y,C.skin));
-    P(flip(9),5,C.navy);
+    ].forEach(([x,y])=>Pf(x,y,C.skin));
+    Pf(9,5,C.navy);
 
     // BODY
     [
@@ -510,34 +498,45 @@ export class Player {
       [5,9],[6,9],[7,9],[8,9],[9,9],
       [5,10],[6,10],[7,10],[8,10],[9,10],
       [6,11],[7,11],[8,11],[9,11],
-    ].forEach(([x,y])=>P(flip(x+bx),y+by,C.shirt2));
+    ].forEach(([x,y])=>Pf(x+bx,y+by,C.shirt2));
 
-    P(flip(5+bx),9+by,C.tealS);
-    P(flip(6+bx),9+by,C.teal);
+    Pf(5+bx,9+by,C.tealS);
+    Pf(6+bx,9+by,C.teal);
 
-    const aOff = (dir === "E") ? lArmOff : rArmOff;
-    const hand =   { x: 4+bx, y: 13+by + aOff };
-    const should = { x: 5+bx, y: 11+by + aOff };
+    // SIDE ARMS:
+    // front arm = nearer to camera (always visible)
+    // back arm  = slightly tucked (still visible when holding weapon)
+    const frontOff = (dir === "E") ? lArmOff : rArmOff;
+    const backOff  = (dir === "E") ? rArmOff : lArmOff;
 
-    const Pf = (ix,iy,col)=>P(flip(ix),iy,col);
+    const frontHand = { x: 4+bx, y: 13+by + frontOff };
+    const frontShould = { x: 5+bx, y: 11+by + frontOff };
 
-    // FORCE side weapon direction so it never goes “behind”
-    const sideVec = (dir === "E") ? { dx: 1, dy: 0 } : { dx: -1, dy: 0 };
+    const backHand = { x: 6+bx, y: 13+by + backOff };
+    const backShould = { x: 6+bx, y: 11+by + backOff };
 
     if (!punching){
-      Pf(4+bx, 11+by + aOff, C.shirt2);
-      Pf(4+bx, 12+by + aOff, C.shirt1);
-      Pf(hand.x, hand.y, C.skin);
+      // draw back arm first (behind)
+      Pf(backShould.x, backShould.y, C.shirt2);
+      Pf(backShould.x, backShould.y+1, C.shirt1);
+      Pf(backHand.x, backHand.y, C.skin);
 
+      // draw front arm
+      Pf(frontShould.x, frontShould.y, C.shirt2);
+      Pf(frontShould.x, frontShould.y+1, C.shirt1);
+      Pf(frontHand.x, frontHand.y, C.skin);
+
+      // TWO-HANDED SIDE WEAPON (always in front when held)
       if (held){
-        this._drawHeldItem(Pf, C, held, sideVec, { x: hand.x, y: hand.y }, true, twoHanded);
+        this._drawSideHeldTwoHanded(Pf, C, held, dir, { bx, by }, frontHand, backHand);
       }
     } else {
+      // punching side (keep your swing)
       const swingLead = (dir === "W") ? this._mirrorSwingOne(swing.lead) : swing.lead;
 
-      const shoulder = { x: should.x, y: should.y + 1 };
-      const mid =      { x: hand.x + swingLead.midOff.dx, y: hand.y + swingLead.midOff.dy };
-      const tip =      { x: hand.x + swingLead.tipOff.dx, y: hand.y + swingLead.tipOff.dy };
+      const shoulder = { x: frontShould.x, y: frontShould.y + 1 };
+      const mid =      { x: frontHand.x + swingLead.midOff.dx, y: frontHand.y + swingLead.midOff.dy };
+      const tip =      { x: frontHand.x + swingLead.tipOff.dx, y: frontHand.y + swingLead.tipOff.dy };
 
       this._plotLine(Pf, shoulder, mid, C.shirt2);
       this._plotLine(Pf, mid, tip, C.shirt2);
@@ -545,8 +544,9 @@ export class Player {
       Pf(mid.x, mid.y, C.shirt1);
       Pf(tip.x, tip.y, C.skin);
 
+      // if holding while punching, still keep it visible + front
       if (held){
-        this._drawHeldItem(Pf, C, held, sideVec, tip, true, twoHanded);
+        this._drawSideHeldTwoHanded(Pf, C, held, dir, { bx, by }, tip, backHand);
       }
     }
 
@@ -554,35 +554,103 @@ export class Player {
     [
       [6,12],[7,12],[8,12],[9,12],
       [6,13],[7,13],[8,13],[9,13]
-    ].forEach(([x,y])=>P(flip(x+bx),y+by,C.pants));
-    P(flip(9+bx),13+by,C.navy);
+    ].forEach(([x,y])=>Pf(x+bx,y+by,C.pants));
+    Pf(9+bx,13+by,C.navy);
 
-    // LEGS
-    const legX = flip(8+bx);
+    // TWO LEGS in side view (so it doesn't look like one peg)
     const y14 = 14+by, y15 = 15+by, y16 = 16+by;
-
-    const swingLeg = (lfY || rfY || lfX || rfX);
-    if (!swingLeg){
-      P(legX,y14,C.skin);
-      P(legX,y15,C.skin);
-    } else {
-      P(legX,y15,C.skin);
-      P(legX + (dir==="E"?-1:1), y15, C.skin);
-    }
-    P(legX,y16,C.white);
-
-    // SHOE
     const shoeY = 17+by;
-    const offY = (lfY || rfY);
-    const offX = (lfX || rfX);
 
-    const sx = legX + (dir==="E"?offX:-offX);
-    const sy = shoeY + offY;
+    // back leg (slightly behind)
+    const backLegX = 7+bx;
+    const backFootX = backLegX + (dir==="E" ? -1 : 1) + (lfX||rfX);
+    const backFootY = shoeY + (lfY||rfY);
 
-    P(sx, sy, C.navy);
-    P(sx, sy+1, C.navy);
-    P(sx + (dir==="E"?1:-1), sy+1, C.navy);
-    P(sx, sy+2, C.white);
+    Pf(backLegX, y14, C.skin);
+    Pf(backLegX, y15, C.skin);
+    Pf(backLegX, y16, C.white);
+
+    Pf(backFootX, backFootY, C.navy);
+    Pf(backFootX+1, backFootY, C.navy);
+    Pf(backFootX, backFootY+1, C.navy);
+    Pf(backFootX+1, backFootY+1, C.navy);
+    Pf(backFootX, backFootY+2, C.white);
+
+    // front leg (main)
+    const frontLegX = 8+bx;
+    const frontFootX = frontLegX + (lfX||rfX);
+    const frontFootY = shoeY + (lfY||rfY);
+
+    Pf(frontLegX, y14, C.skin);
+    Pf(frontLegX, y15, C.skin);
+    Pf(frontLegX, y16, C.white);
+
+    Pf(frontFootX, frontFootY, C.navy);
+    Pf(frontFootX+1, frontFootY, C.navy);
+    Pf(frontFootX, frontFootY+1, C.navy);
+    Pf(frontFootX+1, frontFootY+1, C.navy);
+    Pf(frontFootX, frontFootY+2, C.white);
+  }
+
+  // SIDE VIEW TWO-HAND HELD WEAPON (always in front, always 2 hands)
+  _drawSideHeldTwoHanded(P, C, held, dir, base, frontHand, backHand){
+    const type = (typeof held === "string") ? held : (held?.type || "tool");
+    const tint = (typeof held === "object" && held?.tint) ? held.tint : null;
+
+    // Define “front” in SIDE-local coordinates (E orientation),
+    // mirroring is handled by Pf already, so we always build to +X.
+    const dx = 1;
+
+    // Place grip slightly forward and up from hands so it reads as "in front"
+    const grip = { x: Math.max(frontHand.x, backHand.x) + 1, y: Math.min(frontHand.y, backHand.y) - 1 };
+
+    // draw both hands on grip (so it reads 2-handed)
+    // (We keep the hands already drawn; this adds “grip contact” pixels.)
+    P(grip.x, grip.y+1, C.skin);
+    P(grip.x-1, grip.y+2, C.skin);
+
+    // weapon length bump (bigger)
+    const len =
+      (type === "bat") ? 6 :
+      (type === "knife") ? 5 :
+      (type === "gun") ? 4 :
+      5;
+
+    if (type === "bat"){
+      for (let i=0;i<=len;i++){
+        P(grip.x + dx*i, grip.y, C.wood);
+      }
+      // tip highlight
+      P(grip.x + dx*(len+1), grip.y, C.white);
+
+    } else if (type === "knife"){
+      P(grip.x, grip.y, C.wood);
+      for (let i=1;i<=len;i++){
+        P(grip.x + dx*i, grip.y, tint || C.steel);
+      }
+      P(grip.x + dx*(len+1), grip.y, C.white);
+
+    } else if (type === "gun"){
+      // compact but visible side gun
+      P(grip.x, grip.y, C.navy);
+      P(grip.x+1, grip.y, C.navy);
+      P(grip.x+2, grip.y, C.navy);
+      P(grip.x+1, grip.y+1, C.navy);
+      P(grip.x+3, grip.y, C.steelS);
+
+    } else if (type === "flashlight"){
+      P(grip.x, grip.y, C.steelS);
+      P(grip.x+1, grip.y, C.steelS);
+      P(grip.x+2, grip.y, C.steelS);
+      P(grip.x+3, grip.y, C.glow);
+
+    } else {
+      // generic tool
+      P(grip.x, grip.y, tint || C.steel);
+      P(grip.x+1, grip.y, tint || C.steelS);
+      P(grip.x+2, grip.y, tint || C.steelS);
+      P(grip.x+3, grip.y, tint || C.steelS);
+    }
   }
 
   // =========================
@@ -668,42 +736,36 @@ export class Player {
     }
   }
 
-  // =========================
-  // HELD ITEM (short + close) + slightly bigger
-  // =========================
-  _drawHeldItem(P, C, held, dirVec, hand, tight=true, twoHanded=false, otherHand=null){
+  // HELD ITEM (front/back/diagonal views)
+  _drawHeldItem(P, C, held, dirVec, hand){
     const type = (typeof held === "string") ? held : (held?.type || "tool");
     const tint = (typeof held === "object" && held?.tint) ? held.tint : null;
 
     const dx = Math.sign(dirVec.dx);
     const dy = Math.sign(dirVec.dy);
 
-    // Slightly UP so it doesn't cover feet as much
     const origin = { x: hand.x + dx, y: hand.y + dy - 1 };
 
-    // BUMP sizes a bit (your request)
     const baseLen =
-      (type === "bat") ? 4 :
-      (type === "knife") ? 3 :
-      (type === "gun") ? 3 :
-      3;
-
-    const len = twoHanded ? baseLen + 1 : baseLen;
+      (type === "bat") ? 5 :
+      (type === "knife") ? 4 :
+      (type === "gun") ? 4 :
+      4;
 
     if (type === "knife"){
       P(origin.x, origin.y, C.wood);
-      for (let i=1;i<=len;i++){
+      for (let i=1;i<=baseLen;i++){
         P(origin.x + dx*i, origin.y + dy*i, tint || C.steel);
       }
-      P(origin.x + dx*len + (dy!==0?1:0), origin.y + dy*len + (dx!==0?1:0), C.white);
+      P(origin.x + dx*(baseLen+1) + (dy!==0?1:0), origin.y + dy*(baseLen+1) + (dx!==0?1:0), C.white);
 
     } else if (type === "bat"){
-      for (let i=0;i<=len;i++){
+      for (let i=0;i<=baseLen;i++){
         P(origin.x + dx*i, origin.y + dy*i, C.wood);
       }
+      P(origin.x + dx*(baseLen+1), origin.y + dy*(baseLen+1), C.white);
 
     } else if (type === "gun"){
-      // small but clearer gun
       P(origin.x, origin.y, C.navy);
       P(origin.x + dx, origin.y + dy, C.navy);
       P(origin.x + dx*2, origin.y + dy*2, C.navy);
@@ -720,23 +782,18 @@ export class Player {
       P(origin.x, origin.y, tint || C.steel);
       P(origin.x + dx, origin.y + dy, tint || C.steelS);
       P(origin.x + dx*2, origin.y + dy*2, tint || C.steelS);
+      P(origin.x + dx*3, origin.y + dy*3, tint || C.steelS);
     }
   }
 
-  // =========================
   // DIRECTION HELPERS
-  // BODY uses RAW fy (fixes your walk facing)
-  // ATTACK uses flipped fy (keeps your diagonal “feel” for punching)
-  // =========================
   _faceDir4(fx, fy){
-    // S (fy >= 0) => FRONT sprite. N (fy < 0) => BACK sprite.
     if (Math.abs(fx) > Math.abs(fy)) return fx >= 0 ? "E" : "W";
     return fy >= 0 ? "S" : "N";
   }
 
   _faceDir8(fx, fy){
     const fy2 = -fy; // flip ONLY for attack direction
-
     const mag = Math.hypot(fx, fy2);
     if (mag < 0.001) return this._atk8 || "S";
 
@@ -759,9 +816,7 @@ export class Player {
     return { dx: -1, dy: 1 }; // SW
   }
 
-  // =========================
   // PUNCH SPARK (8-way)
-  // =========================
   _drawPunchSpark(ctx, p, v, swingP){
     const cx = p.x + p.w/2;
     const cy = p.y + p.h/2 - (p.z || 0);
