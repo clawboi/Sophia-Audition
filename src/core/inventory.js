@@ -1,24 +1,28 @@
 // src/core/inventory.js
-// NPC City Inventory (3 quick slots) — keys 1/2/3 switch.
-// This module ONLY manages held weapon/tool state.
-// Your player renderer (player.js) will draw p.held when it's set.
+// NPC City Inventory (3 slots + empty hands)
+// Keys:
+// 1 / 2 / 3 = select slot
+// 0 = empty hands
+// Q = cycle (empty -> 1 -> 2 -> 3 -> empty)
 
 export class Inventory {
   constructor(){
-    this.slots = [
-      null, // slot 1
-      null, // slot 2
-      null  // slot 3
-    ];
-    this.active = 0; // 0..2
+    // 3 slots (put items in here)
+    this.slots = [ null, null, null ];
+
+    // activeSlot:
+    // -1 = empty hands
+    // 0..2 = slot 1..3
+    this.activeSlot = 0;
+
     this._bound = false;
   }
 
-  // Optional: starter loadout
+  // OPTIONAL starter loadout
   setDefaultLoadout(){
     this.slots[0] = { type:"knife", twoHanded:false };
-    this.slots[1] = { type:"bat",   twoHanded:true  };
-    this.slots[2] = { type:"flashlight", twoHanded:false };
+    this.slots[1] = { type:"bat", twoHanded:true };
+    this.slots[2] = null; // keep empty if you want
   }
 
   bindHotkeys(){
@@ -28,29 +32,44 @@ export class Inventory {
     window.addEventListener("keydown", (e) => {
       if (e.repeat) return;
 
-      // Ignore typing in inputs/textareas
-      const t = e.target && e.target.tagName;
-      if (t === "INPUT" || t === "TEXTAREA") return;
+      // ignore typing
+      const tag = e.target && e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
 
-      if (e.key === "1") this.active = 0;
-      else if (e.key === "2") this.active = 1;
-      else if (e.key === "3") this.active = 2;
+      const k = e.key.toLowerCase();
 
-      // Optional: Q cycles
-      else if (e.key.toLowerCase() === "q"){
-        this.active = (this.active + 1) % 3;
+      // pick slots
+      if (k === "1") this.activeSlot = 0;
+      else if (k === "2") this.activeSlot = 1;
+      else if (k === "3") this.activeSlot = 2;
+
+      // empty hands
+      else if (k === "0") this.activeSlot = -1;
+
+      // cycle: empty -> 1 -> 2 -> 3 -> empty
+      else if (k === "q"){
+        this.activeSlot++;
+        if (this.activeSlot > 2) this.activeSlot = -1;
       }
     });
   }
 
-  // Call every frame (or on input changes).
-  // This writes into your player state so the renderer works automatically.
-  applyToPlayer(playerState){
-    playerState.held = this.getHeld();
+  // Call this every frame (or whenever) to sync player.held
+  applyToPlayer(player){
+    player.held = this.getHeld();
   }
 
   getHeld(){
-    return this.slots[this.active] ?? null;
+    if (this.activeSlot < 0) return null; // empty hands
+    return this.slots[this.activeSlot] ?? null;
+  }
+
+  // helper: UI can show "INV: 0 EMPTY" or "INV: 2 KNIFE"
+  getHudInfo(){
+    if (this.activeSlot < 0) return { slotIndex: 0, heldType: "empty" };
+    const held = this.getHeld();
+    const type = (typeof held === "string") ? held : (held?.type || "empty");
+    return { slotIndex: this.activeSlot, heldType: type };
   }
 
   setSlot(i, item){
