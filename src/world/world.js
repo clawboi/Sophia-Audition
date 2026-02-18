@@ -1,3 +1,4 @@
+
 export class World {
   constructor(){
     this.w = 2400;
@@ -356,70 +357,6 @@ function drawStairs(ctx, x,y,w,h){
 }
 
 /* ===================== Props ===================== */
-
-function drawTreeTrunk(ctx, x, y, s){
-  // shrink trees a bit globally
-  s *= 0.75;
-
-  const trunkW = 14*s;
-  const trunkH = 34*s; // taller trunk so canopy connects
-
-  // trunk
-  ctx.fillStyle = "#563721";
-  roundRect(ctx, x - trunkW/2, y - trunkH, trunkW, trunkH, 8*s, true);
-
-  // little trunk highlight
-  ctx.globalAlpha = 0.12;
-  ctx.fillStyle = "#fff";
-  roundRect(ctx, x - trunkW/2 + 3*s, y - trunkH + 6*s, 3*s, trunkH - 12*s, 6*s, true);
-  ctx.globalAlpha = 1;
-
-  // ground shadow
-  ctx.globalAlpha = 0.22;
-  ctx.fillStyle = "#000";
-  ctx.beginPath();
-  ctx.ellipse(x, y + 4, 14*s, 6*s, 0, 0, Math.PI*2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-}
-
-function drawTreeCanopy(ctx, x, y, s){
-  // shrink trees a bit globally
-  s *= 0.75;
-
-  // Move canopy DOWN so it touches trunk (no floating cloud look)
-  const topY = y - 34*s;
-  const midY = y - 22*s;
-  const baseY = y - 10*s; // “skirt” that connects to trunk
-
-  // Dark base foliage that overlaps the trunk top (connection piece)
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = "#2f4e22";
-  blob(ctx, x, baseY, 18*s, 10*s, 0.08);
-  blob(ctx, x - 10*s, baseY + 2*s, 14*s, 8*s, -0.06);
-  blob(ctx, x + 10*s, baseY + 2*s, 14*s, 8*s, 0.10);
-
-  // Mid foliage
-  ctx.fillStyle = "#3a5b2a";
-  blob(ctx, x - 12*s, midY, 18*s, 12*s, -0.10);
-  blob(ctx, x + 12*s, midY, 18*s, 12*s, 0.10);
-  blob(ctx, x, midY - 2*s, 22*s, 14*s, 0.06);
-
-  // Top foliage
-  ctx.fillStyle = "#476b33";
-  blob(ctx, x, topY, 22*s, 14*s, 0.08);
-  blob(ctx, x - 10*s, topY + 4*s, 16*s, 10*s, -0.10);
-  blob(ctx, x + 12*s, topY + 5*s, 16*s, 10*s, 0.12);
-
-  // Subtle outline so it reads like a tree, not a cloud
-  ctx.globalAlpha = 0.22;
-  ctx.strokeStyle = "rgba(18,10,6,.35)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.ellipse(x, y - 20*s, 30*s, 22*s, 0.08, 0, Math.PI*2);
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-}
 
 function drawTreeTrunk(ctx, x, y, s){
   // shrink trees a bit globally
