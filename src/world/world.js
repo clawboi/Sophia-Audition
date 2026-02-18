@@ -1,63 +1,112 @@
-// NPC City — World (Suburban v4: Clean, No Overlap, Walk Around, No Clipping)
+// NPC City — World (Townhome District v1: layout-first, no overlap, solid buildings)
 // Drop-in replacement for world.js ONLY.
 //
-// What you asked for (implemented):
-// - More suburban look (clean blocks, cul-de-sac, lawns, driveways, sidewalks).
-// - NOTHING overlaps (lots are spaced and buildings sit inside yards).
-// - You can walk THROUGH the map freely, but NOT through buildings (collision = buildings only).
-// - Map extends across the full world (uses the whole W x H).
-// - Keeps same World API: getSpawn(), hitsSolid(), nearestLandmark(), draw(), drawAbove().
+// Built to match your reference vibe:
+// - Central green + curvy paths
+// - Townhome blocks surrounding green with alleys between
+// - Parking band on one edge
+// - Pool + tennis + management building cluster
+// - 3 exits (future district transitions)
+// - Minimal props (layout > decoration)
+// - Collisions: buildings + fences + tree trunks (so you walk AROUND things, not over them)
 //
-// If your engine uses different prop draw helpers, this file is self-contained and safe.
+// Notes:
+// - Bush "slowdown" needs support in your movement code. I expose `this.slowZones`
+//   (engine can ignore it safely). If you want slowdown now, paste your movement code next.
 
 export class World {
   constructor(){
-    this.w = 2600;
-    this.h = 1600;
+    this.w = 3000;
+    this.h = 1800;
 
-    // Spawns on a sidewalk near the center spine
     this.spawns = {
-      actor:  { x: 360, y: 820, area:"Sunleaf Suburbs" },
-      thug:   { x: 420, y: 820, area:"Sunleaf Suburbs" },
-      police: { x: 480, y: 820, area:"Sunleaf Suburbs" },
+      actor:  { x: 560, y: 980, area:"Briarleaf Townhomes" },
+      thug:   { x: 620, y: 980, area:"Briarleaf Townhomes" },
+      police: { x: 680, y: 980, area:"Briarleaf Townhomes" },
     };
 
+    // Collections
     this.buildings = [];
     this.yards = [];
     this.props = [];
     this.solids = [];
+    this.slowZones = []; // optional; engine may ignore
 
-    const rng = makeRng(4444);
+    const rng = makeRng(19200);
 
-    // Roads: a simple suburb you can read at a glance
-    this.roads = buildSuburbanRoads(this.w, this.h);
+    // ===== Layout blocks (big shapes) =====
+    this.green = { x: 980, y: 520, w: 1040, h: 760, r: 180 }; // central lawn
+    this.pool  = { x: 2050, y: 1080, w: 360, h: 220, r: 26 };
+    this.tennis= { x: 2050, y: 820,  w: 360, h: 220, r: 26 };
 
-    // Lots + buildings, intentionally spaced to avoid overlap
-    buildSuburbanLots({
-      rng,
-      W: this.w,
-      H: this.h,
-      roads: this.roads,
+    // Roads: perimeter + a couple connectors (kept simple)
+    this.roads = buildTownhomeRoads(this.w, this.h, this.green);
+
+    // Townhome blocks around the green (long building blocks)
+    buildTownhomeBlocks({
+      green: this.green,
       addBuilding: (b)=>this.buildings.push(b),
       addYard: (y)=>this.yards.push(y),
-      addProp: (p)=>this.props.push(p),
-      addDriveway: (d)=>this.roads.driveways.push(d),
+      addFence: (f)=>this.solids.push(f),
+      addDoor:  (d)=>{ this.doors.push(d); },
+      rng
     });
 
-    // Collisions: ONLY buildings (no more "walking over houses")
-    // We inset slightly so the player can brush past walls smoothly.
+    // Pool / Tennis / Management cluster (SE)
+    buildAmenities({
+      pool: this.pool,
+      tennis: this.tennis,
+      addBuilding: (b)=>this.buildings.push(b),
+      addProp: (p)=>this.props.push(p),
+      addSolid: (s)=>this.solids.push(s),
+    });
+
+    // Parking band (south edge) + lots (visual), with a few car silhouettes (non-solid for now)
+    buildParkingBand({
+      W: this.w,
+      H: this.h,
+      addProp: (p)=>this.props.push(p),
+      addSolid: (s)=>this.solids.push(s),
+    });
+
+    // Minimal trees + a few bushes (bushes are slowZones, not solids)
+    addMinimalNature({
+      rng,
+      green: this.green,
+      pool: this.pool,
+      tennis: this.tennis,
+      addProp: (p)=>this.props.push(p),
+      addSolid: (s)=>this.solids.push(s),
+      addSlow: (z)=>this.slowZones.push(z),
+    });
+
+    // Doors + landmarks for "Press E" later
+    this.doors = [];
+    addDoorsForBuildings(this.buildings, this.doors);
+
+    this.landmarks = [
+      { id:"green", x: this.green.x + this.green.w*0.52, y: this.green.y + 18, text:"Central Green", hint:"Walk" },
+      { id:"pool",  x: this.pool.x + 40,  y: this.pool.y - 12,  text:"Pool", hint:"Swim (soon)" },
+      { id:"tennis",x: this.tennis.x+40,  y: this.tennis.y - 12,text:"Tennis", hint:"Play (soon)" },
+      { id:"mgmt",  x: 2260, y: 1320, text:"Management", hint:"Missions (soon)" },
+
+      // Exits (district transitions)
+      { id:"exit_w", x: 120,  y: 980,  text:"Exit West", hint:"Downtown (soon)" },
+      { id:"exit_n", x: 1500, y: 120,  text:"Exit North", hint:"Boulevard (soon)" },
+      { id:"exit_e", x: 2880, y: 720,  text:"Exit East", hint:"Apartments (soon)" },
+    ];
+
+    // Collisions: buildings + fences + tree trunks + amenity fences + parking curbs
+    // Buildings: inset slightly so movement feels clean
     for (const b of this.buildings){
-      this.solids.push({ x: b.x+8, y: b.y+8, w: b.w-16, h: b.h-16 });
+      this.solids.push({ x: b.x+8, y: b.y+10, w: b.w-16, h: b.h-18 });
     }
 
-    // Landmarks for UI hints
-    this.landmarks = [
-      { id:"homes",    x: 360,  y: 610,  text:"Neighborhood", hint:"Houses" },
-      { id:"market",   x: 520,  y: 320,  text:"Corner Market", hint:"Snacks (soon)" },
-      { id:"park",     x: 1420, y: 520,  text:"Sunleaf Park",  hint:"Breathe" },
-      { id:"studio",   x: 2140, y: 760,  text:"Acting Studio", hint:"Audition (soon)" },
-      { id:"culdesac", x: 2320, y: 1130, text:"Cul-de-sac",    hint:"Quiet" },
-    ];
+    // Keep player inside world bounds
+    this.solids.push({ x: -200, y: -200, w: this.w+400, h: 180, tag:"bounds" });              // top
+    this.solids.push({ x: -200, y: this.h+20, w: this.w+400, h: 180, tag:"bounds" });         // bottom
+    this.solids.push({ x: -200, y: -200, w: 180, h: this.h+400, tag:"bounds" });              // left
+    this.solids.push({ x: this.w+20, y: -200, w: 180, h: this.h+400, tag:"bounds" });         // right
   }
 
   getSpawn(role){ return this.spawns[role] || this.spawns.actor; }
@@ -69,16 +118,27 @@ export class World {
     return false;
   }
 
-  nearestLandmark(px, py, radius = 64){
+  nearestLandmark(px, py, radius = 72){
     let best = null;
     let bestD2 = radius * radius;
     for (const lm of this.landmarks){
-      const dx = lm.x - px;
-      const dy = lm.y - py;
+      const dx = lm.x - px, dy = lm.y - py;
       const d2 = dx*dx + dy*dy;
       if (d2 <= bestD2){ bestD2 = d2; best = lm; }
     }
     return best;
+  }
+
+  // Optional helper: returns slowdown factor (1 = normal, <1 slower)
+  // Only used if your movement code calls it.
+  slowFactorAt(px, py){
+    let f = 1;
+    for (const z of this.slowZones){
+      if (px>=z.x && px<=z.x+z.w && py>=z.y && py<=z.y+z.h){
+        f = Math.min(f, z.f || 0.6);
+      }
+    }
+    return f;
   }
 
   draw(ctx, cam){
@@ -88,41 +148,49 @@ export class World {
     ctx.save();
     ctx.translate(-Math.round(cam.x), -Math.round(cam.y));
 
-    // Ground
+    // Base ground
     drawGround(ctx, 0, 0, this.w, this.h);
 
-    // Lawns first (no overlap with roads since roads draw on top)
-    for (const y of this.yards) drawYardLawn(ctx, y);
+    // Central green + paths
+    drawGreen(ctx, this.green);
+    drawGreenPaths(ctx, this.green);
 
-    // Roads on top of grass
+    // Roads + sidewalks (on top of grass)
     drawRoads(ctx, this.roads);
 
-    // Yard details (driveways/walks) after roads so they read clean
-    for (const y of this.yards) drawYardDetails(ctx, y);
+    // Parking band (visual only layer is props; curbs are solids)
+    // (already built into props/solids)
 
-    // Buildings
+    // Amenities (pool/tennis) base pads
+    drawAmenityPads(ctx, this.pool, this.tennis);
+
+    // Yards (small lawns around buildings)
+    for (const y of this.yards) drawYard(ctx, y);
+
+    // Buildings (2.5D: draw shadow first)
     for (const b of this.buildings){
-      if (b.kind === "house")  drawHouse(ctx, b);
-      if (b.kind === "market") drawMarket(ctx, b);
-      if (b.kind === "studio") drawStudio(ctx, b);
-      if (b.kind === "park")   drawParkBlock(ctx, b);
+      drawBuildingShadow(ctx, b);
+      if (b.kind === "townhome") drawTownhomeBlock(ctx, b);
+      if (b.kind === "mgmt")     drawMgmt(ctx, b);
+      if (b.kind === "club")     drawClubhouse(ctx, b);
     }
 
-    // Labels
-    ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial";
-    ctx.fillStyle = "rgba(0,0,0,.45)";
-    for (const lm of this.landmarks) ctx.fillText(lm.text, lm.x, lm.y);
-
-    // Props depth sort (so trees feel grounded)
+    // Props depth sort
     const propsSorted = [...this.props].sort((a,b)=>(a.baseY||a.y)-(b.baseY||b.y));
     for (const pr of propsSorted){
       if (pr.type === "tree")    drawTree(ctx, pr.x, pr.y, pr.s||1);
+      if (pr.type === "bush")    drawBush(ctx, pr.x, pr.y, pr.s||1);
       if (pr.type === "lamp")    drawLamp(ctx, pr.x, pr.y, pr.s||1);
       if (pr.type === "bench")   drawBench(ctx, pr.x, pr.y, pr.s||1);
-      if (pr.type === "mailbox") drawMailbox(ctx, pr.x, pr.y, pr.s||1);
-      if (pr.type === "bush")    drawBush(ctx, pr.x, pr.y, pr.s||1);
-      if (pr.type === "flower")  drawFlower(ctx, pr.x, pr.y, pr.s||1, pr.c||0);
+      if (pr.type === "dumpster")drawDumpster(ctx, pr.x, pr.y, pr.s||1);
+      if (pr.type === "car")     drawCar(ctx, pr.x, pr.y, pr.s||1, pr.c||0);
+      if (pr.type === "sign")    drawSign(ctx, pr.x, pr.y, pr.s||1, pr.t||"");
     }
+
+    // Landmark text only near player is handled by UI; here we keep it subtle:
+    ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial";
+    ctx.fillStyle = "rgba(0,0,0,.35)";
+    for (const lm of this.landmarks) ctx.fillText(lm.text, lm.x, lm.y);
 
     ctx.restore();
   }
@@ -130,251 +198,268 @@ export class World {
   drawAbove(){ /* intentionally empty */ }
 }
 
-/* ===================== Roads (suburban grid) ===================== */
+/* ===================== Roads ===================== */
 
-function buildSuburbanRoads(W, H){
+function buildTownhomeRoads(W, H, green){
   const asphalt = [];
   const sidewalk = [];
   const marks = [];
-  const driveways = [];
 
-  const addStreet = (x,y,w,h,r=22) => {
-    sidewalk.push({ x: x-14, y: y-14, w: w+28, h: h+28, r: r+10 });
+  const addRoad = (x,y,w,h,r=26)=>{
+    sidewalk.push({ x:x-16, y:y-16, w:w+32, h:h+32, r:r+12 });
     asphalt.push ({ x, y, w, h, r });
   };
 
-  // Main horizontal spine (wide)
-  addStreet(120, 760, 2360, 180, 28);
+  // Perimeter-ish road loop (top / left curve feel / bottom)
+  addRoad(220, 260, 2560, 160, 30);          // north
+  addRoad(160, 420, 220, 1080, 44);          // west vertical (slightly wider curve vibe)
+  addRoad(220, 1500, 2560, 160, 30);         // south
+  addRoad(2680, 420, 220, 920, 44);          // east vertical
 
-  // Upper residential street
-  addStreet(160, 520, 2280, 140, 24);
+  // Two internal connectors (to make it feel like a complex)
+  addRoad(860, 740, 1240, 140, 26);          // mid connector
+  addRoad(1440, 920, 180, 520, 26);          // down to amenities
 
-  // Lower residential street
-  addStreet(160, 1020, 2280, 140, 24);
+  // Lane marks (minimal)
+  for (let i=0;i<28;i++) marks.push({ x: 300 + i*88, y: 340, w: 34, h: 4 });
+  for (let i=0;i<26;i++) marks.push({ x: 300 + i*88, y: 1580, w: 34, h: 4 });
+  for (let i=0;i<14;i++) marks.push({ x: 1518, y: 980 + i*58, w: 4, h: 26 });
 
-  // Left vertical (market street)
-  addStreet(380, 260, 160, 520, 24);
-
-  // Center vertical (park connector)
-  addStreet(1340, 320, 180, 900, 26);
-
-  // Right vertical (studio strip)
-  addStreet(2100, 560, 180, 620, 24);
-
-  // Cul-de-sac bulb (bottom-right)
-  sidewalk.push({ x: 2200, y: 1060, w: 420, h: 320, r: 140 });
-  asphalt.push ({ x: 2216, y: 1076, w: 388, h: 288, r: 132 });
-
-  // Lane marks
-  for (let i=0;i<30;i++) marks.push({ x: 190 + i*74, y: 850, w: 34, h: 4 });
-  for (let i=0;i<20;i++) marks.push({ x: 1415, y: 360 + i*58, w: 4, h: 28 });
-
-  return { asphalt, sidewalk, marks, driveways };
+  return { asphalt, sidewalk, marks, driveways: [] };
 }
 
-/* ===================== Lots (NO overlap) ===================== */
+/* ===================== Townhome Blocks ===================== */
 
-function buildSuburbanLots({ rng, W, H, roads, addBuilding, addYard, addProp, addDriveway }){
-  // PARK BLOCK (center-right)
-  const park = { kind:"park", x: 980, y: 360, w: 820, h: 520 };
-  addBuilding(park);
+function buildTownhomeBlocks({ green, addBuilding, addYard, addFence, rng }){
+  // Build 4 long blocks around the green with alleys between them.
+  // Each block also gets small yard patches (visual) and fences (solids) to keep the complex readable.
 
-  // Park props
-  for (let i=0;i<18;i++){
-    const x = park.x + 60 + rng()*(park.w-120);
-    const y = park.y + 60 + rng()*(park.h-120);
-    addProp({ type:"tree", x, y, s: 1.0 + rng()*0.25, baseY: y+2 });
+  const blocks = [
+    // North row (facing green)
+    { x: green.x-120, y: green.y-240, w: green.w+240, h: 150, kind:"townhome", doors:"south" },
+    // South row
+    { x: green.x-120, y: green.y+green.h+90, w: green.w+240, h: 150, kind:"townhome", doors:"north" },
+    // West row
+    { x: green.x-260, y: green.y-40, w: 170, h: green.h+80, kind:"townhome", doors:"east" },
+    // East row
+    { x: green.x+green.w+90, y: green.y-40, w: 170, h: green.h+80, kind:"townhome", doors:"west" },
+  ];
+
+  // Split each long block into segments with alley gaps (no overlap guaranteed)
+  for (const b of blocks){
+    const segments = (b.w > b.h) ? 3 : 2;
+    if (b.w > b.h){
+      const segW = (b.w - 2*70) / segments;
+      for (let i=0;i<segments;i++){
+        const x = b.x + i*(segW+70);
+        addBuilding({ kind:"townhome", x: Math.round(x), y:b.y, w: Math.round(segW), h:b.h, doors:b.doors, variant:i%3 });
+        addYard({ x: Math.round(x)+12, y:b.y-34, w: Math.round(segW)-24, h: 26 });
+        addYard({ x: Math.round(x)+12, y:b.y+b.h+8, w: Math.round(segW)-24, h: 26 });
+        // fences behind blocks (thin solids)
+        addFence({ x: Math.round(x)+6, y:b.y-8, w: Math.round(segW)-12, h: 8, tag:"fence" });
+        addFence({ x: Math.round(x)+6, y:b.y+b.h, w: Math.round(segW)-12, h: 8, tag:"fence" });
+      }
+    } else {
+      const segH = (b.h - 70) / segments;
+      for (let i=0;i<segments;i++){
+        const y = b.y + i*(segH+70);
+        addBuilding({ kind:"townhome", x:b.x, y: Math.round(y), w:b.w, h: Math.round(segH), doors:b.doors, variant:i%3 });
+        addYard({ x: b.x-34, y: Math.round(y)+12, w: 26, h: Math.round(segH)-24 });
+        addYard({ x: b.x+b.w+8, y: Math.round(y)+12, w: 26, h: Math.round(segH)-24 });
+        addFence({ x: b.x-8, y: Math.round(y)+6, w: 8, h: Math.round(segH)-12, tag:"fence" });
+        addFence({ x: b.x+b.w, y: Math.round(y)+6, w: 8, h: Math.round(segH)-12, tag:"fence" });
+      }
+    }
   }
-  addProp({ type:"bench", x: park.x+park.w*0.35, y: park.y+park.h*0.55, s: 1, baseY: park.y+park.h*0.55+2 });
-  addProp({ type:"bench", x: park.x+park.w*0.65, y: park.y+park.h*0.45, s: 1, baseY: park.y+park.h*0.45+2 });
 
-  // MARKET (top-left)
-  addBuilding({ kind:"market", x: 240, y: 300, w: 340, h: 200 });
+  // A few additional internal smaller buildings near entries (keeps it “complex-like”)
+  addBuilding({ kind:"club", x: green.x-260, y: green.y+green.h+10, w: 210, h: 120, doors:"north" });
+  addBuilding({ kind:"club", x: green.x+green.w+50, y: green.y-170, w: 210, h: 120, doors:"south" });
 
-  // STUDIO (right strip)
-  addBuilding({ kind:"studio", x: 1940, y: 660, w: 420, h: 240 });
+  // Dumpster area (SW corner near parking)
+  // (visual prop, plus a small fence solid around it so it feels like an enclosure)
+  // We'll place props in addMinimalNature to keep all props together.
+}
 
-  // HOUSE ROWS (planned blocks)
-  // Upper row (faces down toward upper street)
-  addHouseRow({
-    rng, addBuilding, addYard, addProp, addDriveway,
-    x0: 160, y0: 300, count: 6, lotW: 260, lotH: 190, gap: 18,
-    faceDown: true, streetY: 520
-  });
+/* ===================== Amenities ===================== */
 
-  // Between upper and main (faces down toward main)
-  addHouseRow({
-    rng, addBuilding, addYard, addProp, addDriveway,
-    x0: 160, y0: 600, count: 6, lotW: 260, lotH: 190, gap: 18,
-    faceDown: true, streetY: 760
-  });
+function buildAmenities({ pool, tennis, addBuilding, addProp, addSolid }){
+  // Management building by pool
+  const mgmt = { kind:"mgmt", x: pool.x+40, y: pool.y+260, w: 280, h: 140, doors:"north" };
+  addBuilding(mgmt);
 
-  // Between main and lower (faces up toward main)
-  addHouseRow({
-    rng, addBuilding, addYard, addProp, addDriveway,
-    x0: 160, y0: 940, count: 6, lotW: 260, lotH: 190, gap: 18,
-    faceDown: false, streetY: 940
-  });
+  // Fence around amenity zone (solid)
+  const fence = { x: tennis.x-34, y: tennis.y-40, w: 430, h: 620, tag:"fence" };
+  addSolid({ x: fence.x, y: fence.y, w: fence.w, h: 12, tag:"fence" });
+  addSolid({ x: fence.x, y: fence.y+fence.h-12, w: fence.w, h: 12, tag:"fence" });
+  addSolid({ x: fence.x, y: fence.y, w: 12, h: fence.h, tag:"fence" });
+  addSolid({ x: fence.x+fence.w-12, y: fence.y, w: 12, h: fence.h, tag:"fence" });
 
-  // Below lower (faces up toward lower street)
-  addHouseRow({
-    rng, addBuilding, addYard, addProp, addDriveway,
-    x0: 160, y0: 1220, count: 6, lotW: 260, lotH: 240, gap: 18,
-    faceDown: false, streetY: 1020
-  });
+  // Gate sign (visual)
+  addProp({ type:"sign", x: tennis.x+120, y: tennis.y-58, s: 1, baseY: tennis.y-56, t:"AMENITIES" });
 
-  // A few cul-de-sac homes (spaced, no overlap)
-  const cx = 2380, cy = 1200;
-  for (let i=0;i<5;i++){
-    const t = (-1.1 + i*0.50);
-    const hx = cx + Math.cos(t)*170 - 90;
-    const hy = cy + Math.sin(t)*110 - 60;
-    addBuilding({ kind:"house", x: Math.round(hx), y: Math.round(hy), w: 182, h: 120, accent: i%3, variant: (i+1)%3 });
-    addYard({ x: Math.round(hx)-14, y: Math.round(hy)-12, w: 210, h: 160 });
-    // mailbox
-    const mbx = Math.round(hx) + 96;
-    const mby = Math.round(hy) + 142;
-    addProp({ type:"mailbox", x: mbx, y: mby, s: 1, baseY: mby+2 });
+  // benches (visual)
+  addProp({ type:"bench", x: pool.x+70, y: pool.y+240, s: 1, baseY: pool.y+242 });
+  addProp({ type:"bench", x: tennis.x+290, y: tennis.y+240, s: 1, baseY: tennis.y+242 });
+}
+
+function buildParkingBand({ W, H, addProp, addSolid }){
+  // Parking lot band along the south road, with curbs as solids
+  const lot = { x: 360, y: 1360, w: 1780, h: 240 };
+  // Curbs (solids) so it feels defined, but you can still walk in/out from entrances.
+  // We'll leave 3 gaps (exits) in the curb.
+  const gapW = 120;
+  const gaps = [
+    { x: lot.x + 260, y: lot.y-6, w: gapW },
+    { x: lot.x + 860, y: lot.y-6, w: gapW },
+    { x: lot.x + 1460, y: lot.y-6, w: gapW },
+  ];
+
+  // Top curb segments
+  let cursor = lot.x;
+  const curbY = lot.y-6;
+  for (const g of gaps){
+    if (g.x > cursor){
+      addSolid({ x: cursor, y: curbY, w: g.x-cursor, h: 10, tag:"curb" });
+    }
+    cursor = g.x + g.w;
+  }
+  if (cursor < lot.x+lot.w){
+    addSolid({ x: cursor, y: curbY, w: (lot.x+lot.w)-cursor, h: 10, tag:"curb" });
+  }
+  // Bottom curb
+  addSolid({ x: lot.x, y: lot.y+lot.h-4, w: lot.w, h: 10, tag:"curb" });
+  // Left/right curb
+  addSolid({ x: lot.x-4, y: lot.y, w: 10, h: lot.h, tag:"curb" });
+  addSolid({ x: lot.x+lot.w-6, y: lot.y, w: 10, h: lot.h, tag:"curb" });
+
+  // Painted rows (visual via props cars + a sign)
+  addProp({ type:"sign", x: lot.x+20, y: lot.y-24, s: 1, baseY: lot.y-22, t:"PARKING" });
+
+  // A few parked cars (visual only)
+  const colors = [0,1,2];
+  for (let row=0; row<2; row++){
+    for (let i=0;i<10;i++){
+      const x = lot.x + 90 + i*160;
+      const y = lot.y + 70 + row*110;
+      if (i % 3 === 0) addProp({ type:"car", x, y, s: 1, baseY: y+6, c: colors[(i+row)%3] });
+    }
+  }
+
+  // Dumpster enclosure near SW parking
+  addProp({ type:"dumpster", x: lot.x+lot.w+120, y: lot.y+lot.h-30, s: 1, baseY: lot.y+lot.h-28 });
+  addSolid({ x: lot.x+lot.w+80, y: lot.y+lot.h-90, w: 120, h: 12, tag:"fence" });
+  addSolid({ x: lot.x+lot.w+80, y: lot.y+lot.h-90, w: 12, h: 90, tag:"fence" });
+  addSolid({ x: lot.x+lot.w+188, y: lot.y+lot.h-90, w: 12, h: 90, tag:"fence" });
+}
+
+/* ===================== Nature / Props ===================== */
+
+function addMinimalNature({ rng, green, pool, tennis, addProp, addSolid, addSlow }){
+  // Trees around green (solid trunks)
+  const ring = [
+    [green.x+120, green.y+80],
+    [green.x+green.w-120, green.y+90],
+    [green.x+90, green.y+green.h-90],
+    [green.x+green.w-90, green.y+green.h-80],
+    [green.x+green.w*0.5, green.y+green.h+18],
+    [green.x-24, green.y+green.h*0.5],
+    [green.x+green.w+24, green.y+green.h*0.5],
+  ];
+  for (const [x,y] of ring){
+    addProp({ type:"tree", x, y, s: 1.05, baseY: y+2 });
+    // trunk collision (small)
+    addSolid({ x: x-10, y: y-20, w: 20, h: 20, tag:"tree" });
+  }
+
+  // A few lamps (non-solid)
+  addProp({ type:"lamp", x: green.x+80, y: green.y+green.h*0.5, s: 1, baseY: green.y+green.h*0.5+2 });
+  addProp({ type:"lamp", x: green.x+green.w-80, y: green.y+green.h*0.5, s: 1, baseY: green.y+green.h*0.5+2 });
+
+  // Bush slow zones near amenities (optional)
+  for (let i=0;i<6;i++){
+    const x = tennis.x - 80 + i*70;
+    const y = tennis.y + 560 + (i%2)*14;
+    addProp({ type:"bush", x, y, s: 1, baseY: y+2 });
+    addSlow({ x: x-26, y: y-18, w: 52, h: 36, f: 0.65, tag:"bush" });
   }
 }
 
-function addHouseRow({ rng, addBuilding, addYard, addProp, addDriveway, x0, y0, count, lotW, lotH, gap, faceDown, streetY }){
-  for (let i=0;i<count;i++){
-    const lotX = x0 + i*(lotW+gap);
-    const lotY = y0;
-
-    // Yard
-    const yard = { x: lotX+10, y: lotY+10, w: lotW-20, h: lotH-20 };
-    addYard(yard);
-
-    // House inside yard (never overlaps others)
-    const houseW = 168 + Math.floor(rng()*28);
-    const houseH = 110 + Math.floor(rng()*20);
-    const hx = lotX + (lotW-houseW)/2;
-    const hy = faceDown ? (lotY + lotH - houseH - 24) : (lotY + 24);
-
-    addBuilding({
-      kind:"house",
-      x: Math.round(hx), y: Math.round(hy),
-      w: houseW, h: houseH,
-      accent: i%3,
-      variant: (i + Math.floor(rng()*3))%3
-    });
-
-    // Driveway (connect to street)
-    const dW = 58;
-    const dH = 86 + Math.floor(rng()*22);
-    const dX = lotX + 28 + Math.floor(rng()*40);
-    const dY = faceDown ? (streetY + 8) : (streetY - dH - 8);
-    yard.drive = { x:dX, y:dY, w:dW, h:dH };
-    addDriveway({ x:dX, y:dY, w:dW, h:dH, r: 10 });
-
-    // Walkway
-    const walkH = 50;
-    const walkY = faceDown ? (hy - walkH) : (hy + houseH);
-    yard.walk = { x: hx + houseW*0.5 - 8, y: walkY, w: 16, h: walkH };
-
-    // Mailbox
-    const mbY = faceDown ? (streetY + 18) : (streetY - 18);
-    addProp({ type:"mailbox", x: dX + dW + 10, y: mbY, s: 1, baseY: mbY+2 });
-
-    // Trees (placed in back corners so they never block driveways visually)
-    if (rng() < 0.75){
-      const tx = yard.x + 28 + rng()*46;
-      const ty = yard.y + yard.h - 16;
-      addProp({ type:"tree", x: tx, y: ty, s: 0.95 + rng()*0.25, baseY: ty+2 });
-    }
-    if (rng() < 0.35){
-      const tx = yard.x + yard.w - (28 + rng()*46);
-      const ty = yard.y + yard.h - 16;
-      addProp({ type:"tree", x: tx, y: ty, s: 0.90 + rng()*0.25, baseY: ty+2 });
-    }
-
-    // Bushes
-    const bushes = 2 + Math.floor(rng()*2);
-    for (let k=0;k<bushes;k++){
-      const bx = yard.x + 36 + k*(yard.w/(bushes+1));
-      const by = yard.y + 28 + rng()*10;
-      addProp({ type:"bush", x: bx, y: by, s: 0.75 + rng()*0.25, baseY: by+2 });
-    }
-
-    // Flowers
-    if (rng() < 0.5) addFlowerPatch(addProp, rng, yard.x + yard.w*0.55, yard.y + yard.h*0.55);
+function addDoorsForBuildings(buildings, doors){
+  for (const b of buildings){
+    // Door zone centered on the “facing” side
+    let dx = b.x + b.w/2 - 18;
+    let dy = b.y + b.h - 18;
+    if (b.doors === "north") dy = b.y - 18;
+    if (b.doors === "south") dy = b.y + b.h - 6;
+    if (b.doors === "east")  { dx = b.x + b.w - 6; dy = b.y + b.h*0.5 - 18; }
+    if (b.doors === "west")  { dx = b.x - 18;     dy = b.y + b.h*0.5 - 18; }
+    doors.push({ id: b.kind, x: Math.round(dx), y: Math.round(dy), w: 36, h: 36, target: b.kind });
   }
 }
 
-/* ===================== Visuals ===================== */
+/* ===================== Drawing ===================== */
 
 function drawGround(ctx, x, y, w, h){
-  ctx.fillStyle = "#556b33";
+  // gritty LA grass base (not too bright)
+  ctx.fillStyle = "#4f6530";
   ctx.fillRect(x, y, w, h);
 
-  // micro-noise
-  ctx.globalAlpha = 0.10;
+  // LIGHT noise (performance-friendly)
+  ctx.globalAlpha = 0.08;
   ctx.fillStyle = "#000";
-  for (let i=0; i<6400; i++){
-    const px = (i*37) % w;
-    const py = (i*91) % h;
+  for (let i=0; i<2800; i++){
+    const px = (i*53) % w;
+    const py = (i*97) % h;
     if ((i % 2) === 0) ctx.fillRect(x + px, y + py, 1, 1);
   }
   ctx.globalAlpha = 1;
+}
 
-  // warm flecks
-  ctx.globalAlpha = 0.07;
-  ctx.fillStyle = "#d9c18b";
-  for (let i=0; i<1700; i++){
-    const px = (i*53) % w;
-    const py = (i*131) % h;
-    if ((i % 7) === 0) ctx.fillRect(x + px, y + py, 1, 1);
-  }
+function drawGreen(ctx, g){
+  ctx.globalAlpha = 0.96;
+  ctx.fillStyle = "#56763a";
+  roundRect(ctx, g.x, g.y, g.w, g.h, g.r, true);
+
+  // darker edge vignette
+  ctx.globalAlpha = 0.10;
+  ctx.fillStyle = "#000";
+  roundRect(ctx, g.x+10, g.y+10, g.w-20, g.h-20, Math.max(20,g.r-24), true);
   ctx.globalAlpha = 1;
 }
 
-function drawYardLawn(ctx, y){
-  ctx.globalAlpha = 0.95;
-  ctx.fillStyle = "#56753a";
-  roundRect(ctx, y.x, y.y, y.w, y.h, 18, true);
+function drawGreenPaths(ctx, g){
+  // Curvy paths: a loop + 2 diagonals (match your screenshot feel)
+  ctx.globalAlpha = 0.70;
+  ctx.fillStyle = "#d6c7ab";
 
-  ctx.globalAlpha = 0.10;
-  ctx.fillStyle = "#000";
-  for (let i=0;i<240;i++){
-    const px = y.x + ((i*19) % y.w);
-    const py = y.y + ((i*41) % y.h);
-    if (i % 4 === 0) ctx.fillRect(px, py, 1, 1);
-  }
-  ctx.globalAlpha = 1;
-}
+  // Loop
+  roundRect(ctx, g.x+90, g.y+86, g.w-180, g.h-172, Math.max(24,g.r-80), true);
 
-function drawYardDetails(ctx, y){
-  if (y.drive){
-    ctx.globalAlpha = 0.92;
-    ctx.fillStyle = "#a8a294";
-    roundRect(ctx, y.drive.x, y.drive.y, y.drive.w, y.drive.h, 10, true);
-    ctx.globalAlpha = 1;
-  }
-  if (y.walk){
-    ctx.globalAlpha = 0.78;
-    ctx.fillStyle = "#d3c8b5";
-    roundRect(ctx, y.walk.x, y.walk.y, y.walk.w, y.walk.h, 8, true);
-    ctx.globalAlpha = 1;
-  }
-  // subtle fence
-  ctx.globalAlpha = 0.10;
-  ctx.fillStyle = "#000";
-  roundRect(ctx, y.x+10, y.y+y.h-18, y.w-20, 8, 6, true);
+  // Inner grass (carve back)
+  ctx.globalAlpha = 0.96;
+  ctx.fillStyle = "#56763a";
+  roundRect(ctx, g.x+130, g.y+124, g.w-260, g.h-248, Math.max(20,g.r-110), true);
+
+  // Diagonals
+  ctx.globalAlpha = 0.68;
+  ctx.fillStyle = "#d6c7ab";
+  rotRect(ctx, g.x+g.w*0.35, g.y+g.h*0.30, 520, 22, -0.35);
+  rotRect(ctx, g.x+g.w*0.55, g.y+g.h*0.62, 540, 22, 0.28);
+
   ctx.globalAlpha = 1;
 }
 
 function drawRoads(ctx, roads){
   // sidewalks first
   for (const s of roads.sidewalk){
-    ctx.fillStyle = "#c3bdaa";
-    roundRect(ctx, s.x, s.y, s.w, s.h, s.r || 14, true);
+    ctx.fillStyle = "#bdb6a8";
+    roundRect(ctx, s.x, s.y, s.w, s.h, s.r || 16, true);
 
-    ctx.globalAlpha = 0.10;
+    ctx.globalAlpha = 0.08;
     ctx.fillStyle = "#000";
-    for (let i=0;i<10;i++){
-      ctx.fillRect(s.x + 10 + i*(s.w/10), s.y + 6, 1, s.h-12);
+    for (let i=0;i<8;i++){
+      ctx.fillRect(s.x + 14 + i*(s.w/8), s.y + 6, 1, s.h-12);
     }
     ctx.globalAlpha = 1;
   }
@@ -384,146 +469,131 @@ function drawRoads(ctx, roads){
     ctx.fillStyle = "#24242c";
     roundRect(ctx, r.x, r.y, r.w, r.h, r.r || 18, true);
 
-    ctx.globalAlpha = 0.12;
+    ctx.globalAlpha = 0.10;
     ctx.fillStyle = "#000";
-    for (let i=0; i<1100; i++){
+    for (let i=0; i<560; i++){
       const px = r.x + ((i*29) % r.w);
       const py = r.y + ((i*71) % r.h);
       if ((i % 3) === 0) ctx.fillRect(px, py, 1, 1);
     }
     ctx.globalAlpha = 1;
-
-    ctx.globalAlpha = 0.22;
-    ctx.strokeStyle = "rgba(0,0,0,.55)";
-    ctx.lineWidth = 7;
-    roundRect(ctx, r.x, r.y, r.w, r.h, r.r || 18, false);
-    ctx.globalAlpha = 1;
-
-    ctx.globalAlpha = 0.06;
-    ctx.fillStyle = "#fff";
-    roundRect(ctx, r.x+10, r.y+10, r.w-20, 10, 8, true);
-    ctx.globalAlpha = 1;
   }
 
   // lane marks
-  ctx.globalAlpha = 0.33;
+  ctx.globalAlpha = 0.30;
   ctx.fillStyle = "#efe8d6";
   for (const m of roads.marks) ctx.fillRect(m.x, m.y, m.w, m.h);
   ctx.globalAlpha = 1;
+}
 
-  // driveways connect visually
+function drawAmenityPads(ctx, pool, tennis){
+  // Tennis pad
   ctx.globalAlpha = 0.95;
-  ctx.fillStyle = "#a8a294";
-  for (const d of roads.driveways){
-    roundRect(ctx, d.x, d.y, d.w, d.h, d.r || 10, true);
+  ctx.fillStyle = "#3f6f66";
+  roundRect(ctx, tennis.x, tennis.y, tennis.w, tennis.h, tennis.r, true);
+  // Court lines (simple)
+  ctx.globalAlpha = 0.30;
+  ctx.fillStyle = "#fff";
+  roundRect(ctx, tennis.x+24, tennis.y+24, tennis.w-48, tennis.h-48, 12, false);
+  ctx.globalAlpha = 1;
+
+  // Pool deck
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = "#cdbb9c";
+  roundRect(ctx, pool.x-18, pool.y-18, pool.w+36, pool.h+36, pool.r+18, true);
+
+  // Pool water
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = "#1d6b66";
+  roundRect(ctx, pool.x, pool.y, pool.w, pool.h, pool.r, true);
+
+  // water highlights (light)
+  ctx.globalAlpha = 0.12;
+  ctx.fillStyle = "#fff";
+  for (let i=0; i<22; i++){
+    const px = pool.x + 20 + (i*37) % (pool.w-40);
+    const py = pool.y + 18 + (i*19) % (pool.h-36);
+    ctx.fillRect(px, py, 36, 2);
   }
   ctx.globalAlpha = 1;
 }
 
-function drawHouse(ctx, b){
-  const { x,y,w,h, accent=0, variant=0 } = b;
+function drawYard(ctx, y){
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = "#526f37";
+  roundRect(ctx, y.x, y.y, y.w, y.h, 14, true);
+  ctx.globalAlpha = 1;
+}
 
-  ctx.fillStyle = "#c3ad84";
+function drawBuildingShadow(ctx, b){
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = "#000";
+  roundRect(ctx, b.x+10, b.y+b.h-10, b.w-20, 14, 10, true);
+  ctx.globalAlpha = 1;
+}
+
+function drawTownhomeBlock(ctx, b){
+  const { x,y,w,h, variant=0 } = b;
+  ctx.fillStyle = "#b9b0a1";
   roundRect(ctx, x, y, w, h, 14, true);
 
-  // roof
+  // roof band
   ctx.fillStyle = "rgba(0,0,0,.18)";
-  roundRect(ctx, x+8, y+8, w-16, 22, 10, true);
+  roundRect(ctx, x+10, y+10, w-20, 22, 10, true);
 
-  // windows
+  // repeating windows/doors to imply multiple units
   ctx.globalAlpha = 0.28;
-  ctx.fillStyle = "#16161d";
-  if (variant === 0){
-    roundRect(ctx, x+24, y+50, 42, 30, 8, true);
-    roundRect(ctx, x+w-66, y+50, 42, 30, 8, true);
-  } else if (variant === 1){
-    roundRect(ctx, x+30, y+46, 46, 32, 8, true);
-    roundRect(ctx, x+30, y+86, 46, 32, 8, true);
-  } else {
-    roundRect(ctx, x+w*0.5-22, y+52, 44, 30, 8, true);
+  ctx.fillStyle = "#13131a";
+  const units = Math.max(3, Math.floor(w / 170));
+  const step = w / units;
+  for (let i=0;i<units;i++){
+    const ux = x + i*step + 18;
+    roundRect(ctx, ux, y+54, 44, 30, 8, true);
+    roundRect(ctx, ux, y+h-54, 34, 36, 8, true);
   }
   ctx.globalAlpha = 1;
 
-  // door
-  ctx.globalAlpha = 0.55;
-  ctx.fillStyle = "#1a1412";
-  roundRect(ctx, x+w*0.5-14, y+h-44, 28, 34, 6, true);
-  ctx.globalAlpha = 1;
-
-  // grime base
-  ctx.globalAlpha = 0.14;
+  // subtle grime base
+  ctx.globalAlpha = 0.12;
   ctx.fillStyle = "#000";
-  roundRect(ctx, x+6, y+h-18, w-12, 12, 8, true);
+  roundRect(ctx, x+8, y+h-18, w-16, 12, 8, true);
   ctx.globalAlpha = 1;
 
-  // violet accent strip
-  const accents = [
-    "rgba(138,46,255,.05)",
-    "rgba(138,46,255,.07)",
-    "rgba(138,46,255,.09)",
-  ];
-  ctx.fillStyle = accents[accent % accents.length];
+  // slight variant accent
+  const accents = ["rgba(138,46,255,.04)","rgba(138,46,255,.06)","rgba(138,46,255,.08)"];
+  ctx.fillStyle = accents[variant%3];
   ctx.fillRect(x, y, w, 10);
 }
 
-function drawMarket(ctx, b){
+function drawMgmt(ctx, b){
   const { x,y,w,h } = b;
-  ctx.fillStyle = "#b9b2a2";
+  ctx.fillStyle = "#c6b89a";
   roundRect(ctx, x, y, w, h, 16, true);
 
-  ctx.globalAlpha = 0.85;
-  ctx.fillStyle = "rgba(138,46,255,.20)";
-  roundRect(ctx, x+12, y+44, w-24, 28, 10, true);
-  ctx.globalAlpha = 1;
-
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle = "#111118";
-  roundRect(ctx, x+22, y+82, w-44, h-116, 10, true);
-  ctx.globalAlpha = 1;
-}
-
-function drawStudio(ctx, b){
-  const { x,y,w,h } = b;
-  ctx.fillStyle = "#cbbd9c";
-  roundRect(ctx, x, y, w, h, 18, true);
-
-  ctx.globalAlpha = 0.16;
+  ctx.globalAlpha = 0.20;
   ctx.fillStyle = "#000";
-  for (let i=0;i<10;i++){
-    ctx.fillRect(x+18 + i*((w-36)/10), y+18, 1, h-36);
-  }
+  roundRect(ctx, x+18, y+40, w-36, h-66, 12, true);
   ctx.globalAlpha = 1;
 
-  ctx.globalAlpha = 0.55;
-  ctx.fillStyle = "#14131a";
-  roundRect(ctx, x+w*0.5-22, y+h-52, 44, 42, 10, true);
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = "rgba(138,46,255,.16)";
+  roundRect(ctx, x+16, y+16, w-32, 18, 10, true);
   ctx.globalAlpha = 1;
-
-  ctx.fillStyle = "rgba(138,46,255,.08)";
-  ctx.fillRect(x, y+10, w, 8);
 }
 
-function drawParkBlock(ctx, b){
+function drawClubhouse(ctx, b){
   const { x,y,w,h } = b;
-  ctx.globalAlpha = 0.95;
-  ctx.fillStyle = "#4f6f39";
-  roundRect(ctx, x, y, w, h, 34, true);
-  ctx.globalAlpha = 1;
-
-  // path loop
-  ctx.globalAlpha = 0.70;
-  ctx.fillStyle = "#d8c6a2";
-  roundRect(ctx, x+70, y+80, w-140, h-160, 30, true);
-  ctx.globalAlpha = 1;
-
-  // inner meadow
-  ctx.globalAlpha = 0.95;
-  ctx.fillStyle = "#4a6a35";
-  roundRect(ctx, x+100, y+110, w-200, h-220, 26, true);
+  ctx.fillStyle = "#bfb3a0";
+  roundRect(ctx, x, y, w, h, 16, true);
+  ctx.fillStyle = "rgba(0,0,0,.18)";
+  roundRect(ctx, x+10, y+10, w-20, 20, 10, true);
+  ctx.globalAlpha = 0.30;
+  ctx.fillStyle = "#13131a";
+  roundRect(ctx, x+18, y+44, w-36, h-64, 12, true);
   ctx.globalAlpha = 1;
 }
 
-/* ===================== Props ===================== */
+/* ===== Props ===== */
 
 function drawTree(ctx, x, y, s){
   const trunkW = 12*s, trunkH = 34*s;
@@ -547,11 +617,28 @@ function drawTree(ctx, x, y, s){
   ctx.fillStyle = "#476b33";
   blob(ctx, x, topY, 24*s, 14*s, 0.06);
 
+  // ground shadow
   ctx.globalAlpha = 0.18;
   ctx.fillStyle = "#000";
   ctx.beginPath();
   ctx.ellipse(x, y + 4, 14*s, 6*s, 0, 0, Math.PI*2);
   ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawBush(ctx, x,y,s){
+  ctx.fillStyle = "#435a2c";
+  blob(ctx, x, y, 26*s, 16*s, 0.08);
+  ctx.fillStyle = "#355024";
+  blob(ctx, x+14*s, y+3*s, 20*s, 12*s, 0.12);
+  ctx.fillStyle = "#4f6a34";
+  blob(ctx, x-12*s, y+2*s, 22*s, 14*s, -0.06);
+  ctx.globalAlpha = 0.15;
+  ctx.strokeStyle = "rgba(0,0,0,.35)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(x, y+1*s, 28*s, 16*s, 0.08, 0, Math.PI*2);
+  ctx.stroke();
   ctx.globalAlpha = 1;
 }
 
@@ -578,7 +665,6 @@ function drawBench(ctx, x, y, s){
   ctx.globalAlpha = 0.9;
   ctx.fillStyle = "#5a3a24";
   roundRect(ctx, x-w/2, y-h, w, h, 6, true);
-
   ctx.globalAlpha = 0.22;
   ctx.fillStyle = "#000";
   ctx.fillRect(x-w/2+6, y-h+3, w-12, 2);
@@ -591,63 +677,42 @@ function drawBench(ctx, x, y, s){
   ctx.globalAlpha = 1;
 }
 
-function drawMailbox(ctx, x, y, s){
-  ctx.globalAlpha = 0.95;
-  ctx.fillStyle = "#2f2a28";
-  roundRect(ctx, x-2*s, y-18*s, 4*s, 18*s, 3*s, true);
-
-  ctx.fillStyle = "rgba(138,46,255,.14)";
-  roundRect(ctx, x-10*s, y-26*s, 20*s, 10*s, 6*s, true);
-
+function drawDumpster(ctx, x, y, s){
+  const w=42*s, h=22*s;
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = "#2b3b2f";
+  roundRect(ctx, x-w/2, y-h, w, h, 6, true);
   ctx.globalAlpha = 0.25;
   ctx.fillStyle = "#000";
-  ctx.fillRect(x-8*s, y-23*s, 16*s, 1);
+  roundRect(ctx, x-w/2+4, y-h+4, w-8, 6, 4, true);
   ctx.globalAlpha = 1;
 }
 
-function drawBush(ctx, x,y,s){
-  ctx.fillStyle = "#4a5b2f";
-  blob(ctx, x, y, 26*s, 16*s, 0.08);
-  ctx.fillStyle = "#3b4b26";
-  blob(ctx, x+14*s, y+3*s, 20*s, 12*s, 0.12);
-  ctx.fillStyle = "#566b36";
-  blob(ctx, x-12*s, y+2*s, 22*s, 14*s, -0.06);
-
-  ctx.globalAlpha = 0.18;
-  ctx.strokeStyle = "rgba(0,0,0,.35)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.ellipse(x, y+1*s, 28*s, 16*s, 0.08, 0, Math.PI*2);
-  ctx.stroke();
+function drawCar(ctx, x, y, s, c){
+  const colors = ["#3a3a42","#4a2b2b","#2b3b4a"];
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = colors[c%colors.length];
+  roundRect(ctx, x-26*s, y-12*s, 52*s, 24*s, 10*s, true);
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = "#000";
+  roundRect(ctx, x-16*s, y-10*s, 32*s, 10*s, 8*s, true);
   ctx.globalAlpha = 1;
 }
 
-function drawFlower(ctx, x,y,s,cIndex){
-  const colors = ["#f2ead8", "#f0d7e2", "#e9f0d9"];
-  const c = colors[cIndex % colors.length];
-  ctx.globalAlpha = 0.85;
-  ctx.fillStyle = c;
-  ctx.beginPath();
-  ctx.ellipse(x, y, 2.2*s, 1.6*s, 0, 0, Math.PI*2);
-  ctx.fill();
+function drawSign(ctx, x, y, s, t){
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = "#2a2523";
+  roundRect(ctx, x-2*s, y-22*s, 4*s, 22*s, 3*s, true);
+  ctx.fillStyle = "rgba(138,46,255,.14)";
+  roundRect(ctx, x-28*s, y-38*s, 56*s, 14*s, 8*s, true);
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = "#000";
+  ctx.font = "10px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial";
+  if (t) ctx.fillText(t, x-24*s, y-27*s);
   ctx.globalAlpha = 1;
 }
 
-function addFlowerPatch(add, rng, x, y){
-  for (let i=0;i<14;i++){
-    const yy = y + (rng()*60-30);
-    add({
-      type:"flower",
-      x: x + (rng()*110-55),
-      y: yy,
-      s: 0.8 + rng()*0.6,
-      baseY: yy + 8,
-      c: Math.floor(rng()*3)
-    });
-  }
-}
-
-/* ===================== Geometry / RNG ===================== */
+/* ===================== Geometry / helpers ===================== */
 
 function aabb(a,b){
   return a.x < b.x + b.w &&
@@ -672,6 +737,16 @@ function blob(ctx, cx, cy, rx, ry, rot = 0){
   ctx.beginPath();
   ctx.ellipse(cx, cy, rx, ry, rot, 0, Math.PI*2);
   ctx.fill();
+}
+
+function rotRect(ctx, cx, cy, w, h, ang){
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(ang);
+  ctx.beginPath();
+  ctx.roundRect(-w/2, -h/2, w, h, Math.min(14, h/2));
+  ctx.fill();
+  ctx.restore();
 }
 
 function makeRng(seed){
