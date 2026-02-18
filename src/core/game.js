@@ -49,8 +49,9 @@ export class Game {
     this.playerSprite = new Player();
     // Inventory (OFF by default: no default loadout)
 this.inv = new Inventory();
-this.inv.bindHotkeys();              // enables 1/2/3
-this.inv.applyToPlayer(this.player); // ensures player.held starts null
+this.inv.setDefaultLoadout();        // ✅ gives you knife/bat/flashlight
+this.inv.bindHotkeys();              // 1/2/3 + Q cycle
+this.inv.applyToPlayer(this.player); // ensures player.held exists
 
     ui.onStart = (role) => this.startNew(role);
     ui.onContinue = () => this.continueGame();
