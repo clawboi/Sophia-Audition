@@ -100,8 +100,8 @@ export class Player {
     const cx = p.x + p.w/2;
     const feetY = p.y + p.h + 2;
 
-    // tiny idle breathe only
-    const bob = (!moving && !acting) ? (Math.sin(now * 0.0012) * 0.12) : 0;
+    // tiny idle breathe only (keep extremely subtle to avoid "hip shake" feel)
+    const bob = (!moving && !acting) ? (Math.sin(now * 0.0012) * 0.06) : 0;
 
     // punch progress
     let swingP = 0;
@@ -160,7 +160,15 @@ export class Player {
     const stepA = (frame === 1);
     const stepB = (frame === 3);
 
-    const stride = moving ? 1 : 0; // consistent stride keeps feet grounded
+    // Movement styling knobs (Director-mode safe):
+    // - Keep feet readable, but remove torso/hip wobble that can feel nauseating.
+    const STRIDE = 1;          // feet separation
+    const LIFT_NS = 1;         // N/S foot lift
+    const LIFT_EW = 1;         // E/W foot lift
+    const HIP_SWAY = 0;        // 0 = no hip wobble (recommended)
+    const ARM_SWING = 0.5;     // smaller arm swing so the body feels steadier
+
+    const stride = moving ? STRIDE : 0; // consistent stride keeps feet grounded
 
     const isNS = (face4 === "N" || face4 === "S");
     const isEW = (face4 === "E" || face4 === "W");
@@ -172,10 +180,10 @@ export class Player {
         const spread = stride; // tighter stance (no “Mickey” spread)
         lfX = stepA ? -spread : stepB ? spread : 0;
         rfX = stepA ?  spread : stepB ? -spread : 0;
-        lfY = stepA ? -1 : 0;
-        rfY = stepB ? -1 : 0;
+        lfY = stepA ? -LIFT_NS : 0;
+        rfY = stepB ? -LIFT_NS : 0;
       } else if (isEW){
-        const lift = 1;
+        const lift = LIFT_EW;
         lfY = stepA ? -lift : stepB ? lift : 0;
         rfY = stepA ?  lift : stepB ? -lift : 0;
 
@@ -185,15 +193,15 @@ export class Player {
       }
     }
 
-    // hip shift
+    // hip shift (disabled by default to prevent the "shaking hips" look)
     let hipX = 0, hipY = 0;
-    if (moving && !acting){
-      if (isNS) hipX = stepA ? 1 : stepB ? -1 : 0;
-      else     hipY = stepA ? 1 : stepB ? -1 : 0;
+    if (HIP_SWAY && moving && !acting){
+      if (isNS) hipX = stepA ? HIP_SWAY : stepB ? -HIP_SWAY : 0;
+      else     hipY = stepA ? HIP_SWAY : stepB ? -HIP_SWAY : 0;
     }
 
-    // walk arm swing
-    const armSwing = (moving && !acting) ? 1 : 0;
+    // walk arm swing (smaller so it reads as walking, not wobbling)
+    const armSwing = (moving && !acting) ? ARM_SWING : 0;
     const lArmOff = stepA ? -armSwing : stepB ? armSwing : 0;
     const rArmOff = stepA ?  armSwing : stepB ? -armSwing : 0;
 
