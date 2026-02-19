@@ -27,13 +27,32 @@ export class Player {
     this._tmp = { dx:0, dy:0 };
   }
 
+  reset(p){
+    // Renderer-only reset (safe for New Game / Load)
+    this._lastX = p?.x ?? 0;
+    this._lastY = p?.y ?? 0;
+    this._lastT = 0;
+
+    this._step = 0;
+    this._blinkHold = 0;
+    this._blinkNext = 1.6;
+
+    const fx = (p?.faceX ?? 0);
+    const fy = (p?.faceY ?? 1);
+    this._face4 = this._faceDir4(fx, fy);
+    this._atk8  = this._faceDir8(fx, fy);
+  }
+
   draw(ctx, p, input, now){
+    now = (typeof now === "number") ? now : (performance?.now?.() ?? 0);
     // inputs
-    const ix = input.ix ?? 0;
-    const iy = input.iy ?? 0;
+    const ix = (input?.ix ?? 0);
+    const iy = (input?.iy ?? 0);
 
     // moving?
     const moving = (Math.abs(ix) + Math.abs(iy)) > 0.01;
+
+    const punching = ((p.punchT ?? 0) > 0);
 
     // running?
     const running = !!p.running;
@@ -129,7 +148,7 @@ export class Player {
     };
 
     // punch state
-    const punching = (p.punchT > 0);
+    
 
     // walk frame (4-frame)
     const frame = moving ? (Math.floor(this._step) % 4) : 0;
