@@ -1,5 +1,5 @@
 // src/entities/npc.js
-// Tiny NPC system (V2 foundation): walkers + talk prompts + simple gigs
+// Tiny NPC system (V2+ foundation): walkers + talk prompts + simple gigs
 
 export class NPCSystem {
   constructor(world){
@@ -58,12 +58,17 @@ export class NPCSystem {
         wanderT: 0,
         talkSeed: (i*17+9)|0,
         col: c,
+
+        // life bits
+        blinkT: 0,
+        blinkNext: 0.8 + rand(this)*2.4,
       });
     }
   }
 
   update(dt){
     const solidsHit = (rect) => this.world?.hitsSolid ? this.world.hitsSolid(rect) : false;
+
     for (let i=0; i<this.list.length; i++){
       const n = this.list[i];
       n.t += dt;
@@ -97,7 +102,7 @@ export class NPCSystem {
         const ax = 1180, ay = 520;
         const dx = ax - n.x;
         const dy = ay - n.y;
-        const d = Math.hypot(dx,dy);
+        const d = Math.hypot(dx,dy) || 1;
         if (d > 140){
           n.vx = (dx/d) * 55;
           n.vy = (dy/d) * 55;
@@ -117,6 +122,7 @@ export class NPCSystem {
       } else {
         n.vx *= -0.6;
       }
+
       tx = n.x;
       ty = ny;
       if (!solidsHit({ x: tx, y: ty, w: n.w, h: n.h })){
@@ -150,15 +156,16 @@ export class NPCSystem {
     for (let i=0; i<this.list.length; i++){
       const n = this.list[i];
 
-      // shadow
-      ctx.fillStyle = "rgba(0,0,0,.28)";
+      // shadow (grounds sprite)
+      ctx.fillStyle = "rgba(0,0,0,.26)";
       ctx.beginPath();
       ctx.ellipse(n.x + n.w/2, n.y + n.h + 3, 8, 3, 0, 0, Math.PI*2);
       ctx.fill();
 
-      // body (tiny pixel person)
+      // body
       drawNPCSprite(ctx, n);
     }
+
     ctx.restore();
   }
 
@@ -176,8 +183,8 @@ export class NPCSystem {
   }
 
   talkLines(npc){
-    // Deterministic-ish lines per NPC
     const s = (npc.talkSeed|0) + (npc.kind === "agent" ? 77 : 0);
+
     const linesCitizen = [
       "Nice night for a walk.",
       "Rent's brutal out here.",
@@ -191,8 +198,10 @@ export class NPCSystem {
       "Network. Perform. Repeat.",
       "If you miss 8PM, people forget you.",
     ];
+
     const pick = (arr) => arr[Math.abs(hash(s + arr.length*13)) % arr.length];
     const a = npc.kind === "agent" ? linesAgent : linesCitizen;
+
     return [pick(a), pick(a.slice().reverse())];
   }
 }
@@ -211,11 +220,11 @@ function drawNPCSprite(ctx, n){
   const top  = n.col.top;
   const bot  = n.col.bot;
 
-  // feet shadow bar (grounds sprite)
-  ctx.fillStyle="rgba(0,0,0,0.18)";
+  // feet shadow bar (extra grounding)
+  ctx.fillStyle = "rgba(0,0,0,0.16)";
   ctx.fillRect(x+6, y0+16, 6, 2);
 
-  // head (slightly bigger than before, matches player scale better)
+  // head
   px(ctx, x+6, y+2, 6, 5, skin);
   // hair cap
   px(ctx, x+6, y+1, 6, 2, hair);
@@ -240,7 +249,6 @@ function drawNPCSprite(ctx, n){
     const ax = n.faceX > 0 ? x+12 : x+5;
     px(ctx, ax, armY, 1, 4, skin);
   } else {
-    // tiny side arms hint
     px(ctx, x+5, armY, 1, 3, skin);
     px(ctx, x+12, armY, 1, 3, skin);
   }
@@ -249,12 +257,16 @@ function drawNPCSprite(ctx, n){
   px(ctx, x+7, y+13, 2, 4, bot);
   px(ctx, x+10, y+13, 2, 4, bot);
 
-  // shoes (small, not chunky)
+  // shoes (small)
   px(ctx, x+7, y+17, 2, 1, "rgba(15,15,22,0.9)");
   px(ctx, x+10, y+17, 2, 1, "rgba(15,15,22,0.9)");
 }
 
-function pxfunction px(ctx,x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x,y,w,h); }
+function px(ctx, x, y, w, h, c){
+  ctx.fillStyle = c;
+  ctx.fillRect(x, y, w, h);
+}
+
 function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
 
 function rand(sys){
@@ -274,14 +286,15 @@ function hash(n){
 }
 
 function palette(i){
-  const skins = ["#f2c7a1", "#d8a77f", "#b9835a", "#8a5a3b"]; 
-  const hairs = ["#121218", "#2a1b12", "#2b2b33", "#4b2a1a"]; 
-  const tops  = ["rgba(138,46,255,.95)", "rgba(255,255,255,.75)", "rgba(0,255,156,.75)", "rgba(255,60,120,.75)"]; 
-  const bots  = ["rgba(255,255,255,.22)", "rgba(255,255,255,.32)", "rgba(255,255,255,.18)"]; 
+  const skins = ["#f2c7a1", "#d8a77f", "#b9835a", "#8a5a3b"];
+  const hairs = ["#121218", "#2a1b12", "#2b2b33", "#4b2a1a"];
+  const tops  = ["rgba(138,46,255,.95)", "rgba(255,255,255,.75)", "rgba(0,255,156,.75)", "rgba(255,60,120,.75)"];
+  const bots  = ["rgba(255,255,255,.22)", "rgba(255,255,255,.32)", "rgba(255,255,255,.18)"];
+
   return {
     skin: skins[i % skins.length],
     hair: hairs[(i*2) % hairs.length],
-    top: tops[(i*3) % tops.length],
-    bot: bots[(i*5) % bots.length]
+    top:  tops[(i*3) % tops.length],
+    bot:  bots[(i*5) % bots.length]
   };
 }
