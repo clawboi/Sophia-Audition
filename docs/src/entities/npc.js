@@ -254,7 +254,7 @@ function drawNPCSprite(ctx, n){
   px(ctx, x+10, y+17, 2, 1, "rgba(15,15,22,0.9)");
 }
 
-function pxfunction px(ctx,x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x,y,w,h); }
+function px(ctx,x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x,y,w,h); }
 function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
 
 function rand(sys){
