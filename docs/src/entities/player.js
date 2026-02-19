@@ -102,7 +102,7 @@ export class Player {
     const feetY = p.y + p.h + 2;
 
     // tiny idle breathe only (keep extremely subtle to avoid "hip shake" feel)
-    const bob = (!moving && !acting) ? (Math.sin(now * 0.0012) * 0.06) : 0;
+    const bob = (!moving && !acting) ? Math.round(Math.sin(now * 0.0012) * 0.4) : 0;
 
     // punch progress
     let swingP = 0;
